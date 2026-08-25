@@ -23,7 +23,7 @@ export const Navbar = ({
             <Shield className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            {/* <div className="flex items-center gap-2">
               <span className="font-mono font-black text-sm sm:text-base text-slate-900 tracking-wider">
                 EPHEMERAL<span className="text-indigo-600">.LINE</span>
               </span>
@@ -31,10 +31,20 @@ export const Navbar = ({
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
                 NO DATABASE • RAM ONLY
               </span>
+            </div> */}
+
+             <div className="flex items-center gap-2">
+              <span className="font-mono font-black text-sm sm:text-base text-slate-900 tracking-wider">
+                PLUTUS<span className="text-indigo-600">.CHAT</span>
+              </span>
+             
             </div>
-            <p className="text-[11px] text-slate-500 hidden sm:block font-mono font-medium">
+
+
+
+            {/* <p className="text-[11px] text-slate-500 hidden sm:block font-mono font-medium">
               Zero-Persistence Real-time Secure Text Channel
-            </p>
+            </p> */}
           </div>
         </div>
 
@@ -78,14 +88,14 @@ export const Navbar = ({
           </button>
 
           {/* Architecture & PRD details button */}
-          <button
+          {/* <button
             id="view_architecture_button"
             onClick={onOpenArchitecture}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-800 text-xs font-mono font-bold uppercase tracking-wider transition-colors shadow-[2px_2px_0px_0px_rgba(15,23,42,0.4)] active:translate-x-[1px] active:translate-y-[1px] focus:outline-none"
           >
             <Terminal className="w-3.5 h-3.5 text-indigo-300" />
             <span className="hidden sm:inline">SPEC / RAM RULES</span>
-          </button>
+          </button> */}
         </div>
       </div>
     </header>

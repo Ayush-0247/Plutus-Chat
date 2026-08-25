@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import  { useState, useEffect } from 'react';
 import { KeyRound, ArrowRight, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -41,9 +41,9 @@ export const JoinSessionView = ({
             <h2 className="text-lg font-black text-slate-900 uppercase tracking-wide font-sans">
               Join Secure Line
             </h2>
-            <p className="text-xs text-slate-500 font-mono">
+            {/* <p className="text-xs text-slate-500 font-mono">
               Provide link ID & passkey to authenticate
-            </p>
+            </p> */}
           </div>
         </div>
 
@@ -103,9 +103,9 @@ export const JoinSessionView = ({
             />
           </div>
 
-          <div className="p-3 bg-slate-100 border-2 border-slate-900 text-[11px] text-slate-700">
+          {/* <div className="p-3 bg-slate-100 border-2 border-slate-900 text-[11px] text-slate-700">
             <span className="text-indigo-800 font-bold uppercase">Dual-Factor Verification:</span> Both credentials will be validated against active RAM state on the server.
-          </div>
+          </div> */}
 
           {/* Actions */}
           <div className="flex items-center gap-3 pt-2">
