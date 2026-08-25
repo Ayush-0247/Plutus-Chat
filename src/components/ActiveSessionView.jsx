@@ -276,7 +276,7 @@ export const ActiveSessionView = ({
         {/* Real-time Chat Section */}
         <div className="flex-1 flex flex-col bg-white border-2 border-slate-900 rounded-none overflow-hidden shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
           {/* Chat Stream Header */}
-          <div className="p-3 border-b-2 border-slate-900 bg-slate-100 flex items-center justify-between text-xs text-slate-700">
+          {/* <div className="p-3 border-b-2 border-slate-900 bg-slate-100 flex items-center justify-between text-xs text-slate-700">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
               <span className="font-black text-slate-900 uppercase tracking-wider">
@@ -286,7 +286,7 @@ export const ActiveSessionView = ({
             <span className="text-[11px] text-slate-500 font-medium">
               Messages exist only in active browser memory
             </span>
-          </div>
+          </div> */}
 
           {/* Messages Body */}
           <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/60">
@@ -382,10 +382,10 @@ export const ActiveSessionView = ({
                 <Send className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold mt-1.5 px-1">
+            {/* <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold mt-1.5 px-1">
               <span>Shift+Enter or Enter to transmit</span>
               <span>{inputText.length}/2000</span>
-            </div>
+            </div> */}
           </form>
         </div>
       </div>
