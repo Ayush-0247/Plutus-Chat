@@ -1,0 +1,6 @@
+{
+  "name": "Ephemeral Secure Communication Line",
+  "description": "Owner-controlled ephemeral real-time communication session with cryptographic passkeys, zero database persistence, and server-authoritative lifecycle destruction.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
