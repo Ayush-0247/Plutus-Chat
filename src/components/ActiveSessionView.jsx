@@ -98,7 +98,7 @@ export const ActiveSessionView = ({
   const isOwner = sessionData.isOwner;
 
   return (
-    <div className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-6 h-[calc(100vh-4.5rem)] flex flex-col font-mono">
+ <div className="w-full h-[670px] box-border px-1 sm:px-2 py-1 sm:py-3 flex flex-col font-mono bg-slate-50">
       {/* Top Credentials & Actions Bar */}
       <div className="bg-white border-2 border-slate-900 rounded-none p-3 sm:p-4 mb-3 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
