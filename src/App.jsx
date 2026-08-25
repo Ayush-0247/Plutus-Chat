@@ -11,6 +11,7 @@ import { KickedScreen } from './components/KickedScreen.jsx';
 import { ArchitectureModal } from './components/ArchitectureModal.jsx';
 import {
   playMessageReceivedSound,
+  playFileReceivedSound,
   playUserJoinedSound,
   playUserLeftSound,
 } from './services/soundEffects.js';
@@ -19,6 +20,12 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [uiState, setUiState] = useState('HOME');
   const [activeSession, setActiveSession] = useState(null);
+  // Keep ref in sync so socket handlers (stale closures) can read current value
+  const setActiveSessionAndRef = (val) => {
+    const resolved = typeof val === 'function' ? val(activeSessionRef.current) : val;
+    activeSessionRef.current = resolved;
+    setActiveSession(resolved);
+  };
   const [messages, setMessages] = useState([]);
   const [typingUsers, setTypingUsers] = useState([]);
   const [endingData, setEndingData] = useState(null);
@@ -32,6 +39,7 @@ export default function App() {
   const [urlPasskey, setUrlPasskey] = useState('');
 
   const typingMapRef = useRef(new Map());
+  const activeSessionRef = useRef(null); // always-current ref for use inside socket handlers
 
   // Check URL parameters on mount
   useEffect(() => {
@@ -62,7 +70,7 @@ export default function App() {
     // 1. Session created
     const handleSessionCreated = (data) => {
       setIsLoading(false);
-      setActiveSession(data);
+      setActiveSessionAndRef(data);
       setMessages([
         // {
         //   messageId: 'sys-start',
@@ -81,7 +89,7 @@ export default function App() {
     const handleJoinSuccess = (data) => {
       setIsLoading(false);
       setJoinErrorMessage(null);
-      setActiveSession(data);
+      setActiveSessionAndRef(data);
       setMessages([
         {
           messageId: 'sys-join',
@@ -104,7 +112,7 @@ export default function App() {
 
     // 4. Another participant joined
     const handleParticipantJoined = (data) => {
-      setActiveSession((prev) => {
+      setActiveSessionAndRef((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -130,7 +138,7 @@ export default function App() {
 
     // 5. Participant left voluntarily
     const handleParticipantLeft = (data) => {
-      setActiveSession((prev) => {
+      setActiveSessionAndRef((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -156,7 +164,7 @@ export default function App() {
 
     // 6. Participant kicked by owner
     const handleParticipantKicked = (data) => {
-      setActiveSession((prev) => {
+      setActiveSessionAndRef((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -183,7 +191,7 @@ export default function App() {
     // 7. You were kicked
     const handleKickedSelf = (data) => {
       setKickedReason(data.reason);
-      setActiveSession(null);
+      setActiveSessionAndRef(null);
       setMessages([]);
       setUiState('KICKED');
     };
@@ -191,8 +199,16 @@ export default function App() {
     // 8. Receive chat message
     const handleReceiveMessage = (msg) => {
       setMessages((prev) => [...prev, msg]);
-      if (activeSession && msg.senderId !== activeSession.participantId) {
+      if (activeSessionRef.current && msg.senderId !== activeSessionRef.current.participantId) {
         playMessageReceivedSound();
+      }
+    };
+
+    // 8b. Receive file (image or PDF) broadcast from server after HTTP upload
+    const handleReceiveFile = (msg) => {
+      setMessages((prev) => [...prev, { ...msg, type: msg.fileType }]);
+      if (activeSessionRef.current && msg.senderId !== activeSessionRef.current.participantId) {
+        playFileReceivedSound();
       }
     };
 
@@ -235,7 +251,7 @@ export default function App() {
     // 11. Final Session Destroyed
     const handleSessionDestroyed = () => {
       setEndingData(null);
-      setActiveSession(null);
+      setActiveSessionAndRef(null);
       setMessages([]);
       setTypingUsers([]);
       setUiState('DESTROYED');
@@ -251,6 +267,7 @@ export default function App() {
     socket.on('participant-kicked', handleParticipantKicked);
     socket.on('participant-kicked-self', handleKickedSelf);
     socket.on('receive-message', handleReceiveMessage);
+    socket.on('receive-file', handleReceiveFile);
     socket.on('user-typing', handleUserTyping);
     socket.on('session-ending', handleSessionEnding);
     socket.on('session-destroyed', handleSessionDestroyed);
@@ -270,6 +287,7 @@ export default function App() {
       socket.off('participant-kicked', handleParticipantKicked);
       socket.off('participant-kicked-self', handleKickedSelf);
       socket.off('receive-message', handleReceiveMessage);
+      socket.off('receive-file', handleReceiveFile);
       socket.off('user-typing', handleUserTyping);
       socket.off('session-ending', handleSessionEnding);
       socket.off('session-destroyed', handleSessionDestroyed);
@@ -297,7 +315,13 @@ export default function App() {
       sessionId: activeSession.sessionId,
       participantId: activeSession.participantId,
       text,
+      type: 'text',
     });
+  };
+
+  const handleSendFileMessage = (_filePayload) => {
+    // The server broadcasts `receive-file` to all room members directly from
+    // the HTTP upload handler, so no additional socket emit is needed here.
   };
 
   const handleTyping = (isTyping) => {
@@ -327,7 +351,7 @@ export default function App() {
       sessionId: activeSession.sessionId,
       participantId: activeSession.participantId,
     });
-    setActiveSession(null);
+    setActiveSessionAndRef(null);
     setMessages([]);
     setUiState('HOME');
   };
@@ -342,7 +366,7 @@ export default function App() {
   };
 
   const handleResetToHome = () => {
-    setActiveSession(null);
+    setActiveSessionAndRef(null);
     setEndingData(null);
     setMessages([]);
     setTypingUsers([]);
@@ -394,6 +418,7 @@ export default function App() {
             messages={messages}
             typingUsers={typingUsers}
             onSendMessage={handleSendMessage}
+            onSendFileMessage={handleSendFileMessage}
             onTyping={handleTyping}
             onKickParticipant={handleKickParticipant}
             onLeaveSession={handleLeaveSession}
