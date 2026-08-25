@@ -11,8 +11,14 @@ import {
   RefreshCw,
   Send,
   Sparkles,
+  Lock,
+  ShieldCheck,
+  Clock,
+  Key,
+  Cpu,
 } from 'lucide-react';
-import { formatFileSize, uploadFileWithProgress } from '../services/api';
+import { formatFileSize, uploadEncryptedFileWithProgress } from '../services/api';
+import { encryptFileBuffer } from '../services/crypto';
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_PDF_SIZE = 25 * 1024 * 1024; // 25MB
@@ -25,14 +31,18 @@ export default function AttachmentModal({
   onClose,
   sessionId,
   participantId,
+  recipientSharedKeys = new Map(),
+  selfWrappingKey = null,
   onSendFileMessage,
   initialFile = null,
 }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [caption, setCaption] = useState('');
-  const [uploadState, setUploadState] = useState('IDLE'); // IDLE | UPLOADING | SUCCESS | ERROR
+  const [expiresInOption, setExpiresInOption] = useState('NEVER'); // NEVER | 1H | 24H | 7D | 30D
+  const [uploadState, setUploadState] = useState('IDLE'); // IDLE | ENCRYPTING | UPLOADING | SUCCESS | ERROR
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [cryptoStage, setCryptoStage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -59,8 +69,10 @@ export default function AttachmentModal({
     setSelectedFile(null);
     setPreviewUrl(null);
     setCaption('');
+    setExpiresInOption('NEVER');
     setUploadState('IDLE');
     setUploadProgress(0);
+    setCryptoStage('');
     setErrorMessage('');
     setIsDragOver(false);
   };
@@ -71,8 +83,10 @@ export default function AttachmentModal({
     setErrorMessage('');
     const ext = `.${file.name.split('.').pop().toLowerCase()}`;
 
-    // Validate MIME / Extension (PRD Section 10, 11)
-    const isImage = ALLOWED_IMAGE_TYPES.includes(file.type) || ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext);
+    // Validate MIME / Extension (PRD Section 7)
+    const isImage =
+      ALLOWED_IMAGE_TYPES.includes(file.type) ||
+      ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext);
     const isPdf = file.type === 'application/pdf' || ext === '.pdf';
 
     if (!isImage && !isPdf) {
@@ -93,7 +107,7 @@ export default function AttachmentModal({
 
     setSelectedFile(file);
 
-    // Create object URL for preview if image
+    // Create temporary local object URL for preview before encryption
     if (isImage) {
       const url = URL.createObjectURL(file);
       setPreviewUrl(url);
@@ -132,16 +146,39 @@ export default function AttachmentModal({
   };
 
   const handleStartUploadAndSend = async () => {
-    if (!selectedFile || uploadState === 'UPLOADING') return;
+    if (!selectedFile || uploadState === 'UPLOADING' || uploadState === 'ENCRYPTING') return;
 
-    setUploadState('UPLOADING');
+    setUploadState('ENCRYPTING');
+    setCryptoStage('Generating 256-bit AES file key & unique 96-bit IV...');
     setUploadProgress(0);
     setErrorMessage('');
 
     try {
-      // 1. Upload file binary via HTTP multipart/form-data
-      const res = await uploadFileWithProgress({
-        file: selectedFile,
+      // 1. Read file as ArrayBuffer in client memory
+      const fileBuffer = await selectedFile.arrayBuffer();
+
+      // 2. Perform Client-Side Authenticated Encryption (AES-256-GCM)
+      setCryptoStage('Executing AES-256-GCM encryption & sealing envelopes for peers...');
+      const encryptedPackage = await encryptFileBuffer(fileBuffer, {
+        recipientSharedKeys,
+        selfWrappingKey,
+      });
+
+      // 3. Upload only the encrypted ciphertext payload to server (zero plaintext sent)
+      setUploadState('UPLOADING');
+      setCryptoStage('Uploading encrypted ciphertext payload to server...');
+
+      const res = await uploadEncryptedFileWithProgress({
+        ciphertextBlob: encryptedPackage.ciphertextBlob,
+        fileName: selectedFile.name,
+        originalMimeType: selectedFile.type || 'application/octet-stream',
+        originalSize: selectedFile.size,
+        encryptionVersion: encryptedPackage.encryptionVersion,
+        algorithm: encryptedPackage.algorithm,
+        nonce: encryptedPackage.nonce,
+        keyEnvelopes: encryptedPackage.keyEnvelopes,
+        sha256: encryptedPackage.originalSha256,
+        expiresInOption,
         sessionId,
         participantId,
         caption: caption.trim(),
@@ -152,282 +189,303 @@ export default function AttachmentModal({
 
       if (res && res.success && res.fileId) {
         setUploadState('SUCCESS');
-        const isPdf = selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf');
+        const isPdf =
+          selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf');
         const messageType = isPdf ? 'pdf' : 'image';
 
-        // 2. Emit WebSocket message metadata
+        // 4. Emit callback with complete cryptographic metadata (local direct key cache included)
         onSendFileMessage({
           type: messageType,
           fileId: res.fileId,
           text: caption.trim(),
           fileName: res.fileName,
           fileSize: res.fileSize,
+          encryptedSize: res.encryptedSize,
           mimeType: res.mimeType,
+          encryptionVersion: 1,
+          algorithm: 'AES-256-GCM',
+          nonce: encryptedPackage.nonce,
+          keyEnvelopes: encryptedPackage.keyEnvelopes,
+          sha256: encryptedPackage.originalSha256,
+          directRawKeyBase64: encryptedPackage.rawKeyExported,
+          expiresAt: res.expiresAt,
         });
 
-        // Close modal after brief success confirmation
+        // Close modal after brief success feedback
         setTimeout(() => {
           onClose();
         }, 400);
       }
     } catch (err) {
+      console.error('File encryption/upload error:', err);
       setUploadState('ERROR');
-      setErrorMessage(err.message || 'File upload failed. Please verify connection and retry.');
+      setErrorMessage(
+        err.message || 'File encryption or upload failed. Please verify connection and retry.'
+      );
     }
   };
 
   if (!isOpen) return null;
 
-  const isPdf = selectedFile && (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf'));
+  const isImage =
+    selectedFile &&
+    (ALLOWED_IMAGE_TYPES.includes(selectedFile.type) ||
+      ['.jpg', '.jpeg', '.png', '.webp', '.gif'].some((ext) =>
+        selectedFile.name.toLowerCase().endsWith(ext)
+      ));
+  const isPdf =
+    selectedFile &&
+    (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf'));
 
   return (
     <AnimatePresence>
       <div
         id="attachment-modal-overlay"
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm"
         onClick={(e) => {
-          if (e.target === e.currentTarget && uploadState !== 'UPLOADING') {
+          if (e.target === e.currentTarget && uploadState !== 'ENCRYPTING' && uploadState !== 'UPLOADING') {
             onClose();
           }
         }}
       >
         <motion.div
-          id="attachment-modal-content"
-          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+          id="attachment-modal-container"
+          initial={{ opacity: 0, scale: 0.96, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          transition={{ duration: 0.18 }}
-          className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden text-slate-100 flex flex-col max-h-[90vh]"
+          exit={{ opacity: 0, scale: 0.96, y: 10 }}
+          className="relative w-full max-w-xl bg-white border-2 border-slate-900 rounded-none shadow-[10px_10px_0px_0px_rgba(15,23,42,1)] flex flex-col font-mono text-slate-900 overflow-hidden"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90">
+          {/* Modal Header */}
+          <div className="flex items-center justify-between p-4 border-b-2 border-slate-900 bg-slate-900 text-white">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <Upload className="w-4 h-4" />
+              <div className="p-1.5 bg-emerald-500/20 border border-emerald-400 text-emerald-400">
+                <Lock className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-semibold text-slate-100 text-base leading-snug">
-                  Secure File Transfer
+                <h3 className="text-sm sm:text-base font-black uppercase tracking-wider text-white">
+                  End-to-End Encrypted File Transfer
                 </h3>
-                <p className="text-xs text-slate-400">
-                  Ephemeral, zero-cloud encrypted line
+                <p className="text-[11px] text-slate-300 font-sans">
+                  AES-256-GCM client-side encryption • Server stores ciphertext only
                 </p>
               </div>
             </div>
-            <button
-              id="attachment-modal-close-button"
-              onClick={onClose}
-              disabled={uploadState === 'UPLOADING'}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {uploadState !== 'ENCRYPTING' && uploadState !== 'UPLOADING' && (
+              <button
+                id="attachment-modal-close-button"
+                onClick={onClose}
+                className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
 
-          {/* Body */}
-          <div className="p-6 overflow-y-auto space-y-4 flex-1">
-            {/* Error Banner */}
-            {errorMessage && (
-              <motion.div
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-start gap-3 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs leading-relaxed"
-              >
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-medium text-rose-200">Transfer Issue</p>
-                  <p className="mt-0.5">{errorMessage}</p>
-                </div>
-              </motion.div>
-            )}
-
+          {/* Modal Body */}
+          <div className="p-4 sm:p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+            {/* File Dropzone / Selector */}
             {!selectedFile ? (
-              /* Dropzone Selector */
               <div
                 id="file-dropzone"
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                className={`border-2 border-dashed p-6 sm:p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
                   isDragOver
-                    ? 'border-emerald-400 bg-emerald-500/10 scale-[1.01]'
-                    : 'border-slate-700 bg-slate-800/40 hover:border-slate-600 hover:bg-slate-800/70'
+                    ? 'border-indigo-600 bg-indigo-50/70 scale-[0.99]'
+                    : 'border-slate-400 hover:border-slate-900 bg-slate-50 hover:bg-slate-100/80'
                 }`}
               >
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
-                  className="hidden"
                   onChange={handleInputChange}
+                  className="hidden"
                 />
-
-                <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 mb-3 shadow-inner">
-                  <Upload className="w-6 h-6 text-emerald-400" />
+                <div className="w-12 h-12 bg-white border-2 border-slate-900 flex items-center justify-center mb-3 text-indigo-600 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)]">
+                  <Upload className="w-6 h-6" />
                 </div>
-
-                <p className="text-sm font-medium text-slate-200">
-                  Click to select or drag & drop file
+                <h4 className="text-xs sm:text-sm font-black uppercase text-slate-900 mb-1">
+                  Click to select or drag and drop
+                </h4>
+                <p className="text-[11px] text-slate-500 font-sans max-w-sm mb-3">
+                  Images (JPEG, PNG, WEBP, GIF up to 10 MB) or PDF documents (up to 25 MB).
                 </p>
-                <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                  Images up to <span className="text-slate-200 font-medium">10 MB</span> (JPEG, PNG, WEBP, GIF)
-                  <br />
-                  PDF Documents up to <span className="text-slate-200 font-medium">25 MB</span>
-                </p>
-
-                <div className="flex items-center gap-3 mt-4 text-[11px] text-slate-500 font-mono">
-                  <span className="flex items-center gap-1">
-                    <ImageIcon className="w-3.5 h-3.5 text-blue-400" /> Images
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <FileText className="w-3.5 h-3.5 text-rose-400" /> PDF Files
-                  </span>
+                <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1 border border-emerald-300">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Encrypted in memory with unique AES-256 key before upload</span>
                 </div>
               </div>
             ) : (
-              /* Selected File Preview & Staging */
+              /* Selected File Preview & Inspection */
               <div className="space-y-4">
-                {/* Image Preview or PDF Card */}
-                {!isPdf && previewUrl ? (
-                  <div className="relative rounded-xl border border-slate-700/80 bg-slate-950 overflow-hidden flex items-center justify-center max-h-64 group">
-                    <img
-                      src={previewUrl}
-                      alt={selectedFile.name}
-                      referrerPolicy="no-referrer"
-                      className="max-h-60 w-auto object-contain rounded-lg"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-90 pointer-events-none" />
-                    <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-xs text-slate-300">
-                      <span className="truncate max-w-[240px] font-mono text-[11px]">
-                        {selectedFile.name}
-                      </span>
-                      <span className="font-mono bg-slate-800/90 px-2 py-0.5 rounded border border-slate-700 text-[10px]">
-                        {formatFileSize(selectedFile.size)}
-                      </span>
+                <div className="p-3 bg-slate-50 border-2 border-slate-900 flex items-start gap-3 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)]">
+                  {isImage && previewUrl ? (
+                    <div className="w-16 h-16 bg-slate-950 border border-slate-900 rounded-none overflow-hidden shrink-0 flex items-center justify-center">
+                      <img
+                        src={previewUrl}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-4 p-4 rounded-xl border border-slate-700/80 bg-slate-800/60">
-                    <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
-                      <FileText className="w-6 h-6" />
+                  ) : (
+                    <div className="w-16 h-16 bg-rose-50 border-2 border-rose-400 flex items-center justify-center shrink-0 text-rose-600">
+                      <FileText className="w-8 h-8" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-200 truncate font-mono">
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-black text-slate-900 truncate font-mono">
                         {selectedFile.name}
                       </p>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
-                        <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-semibold text-[10px]">
-                          PDF
-                        </span>
-                        <span>•</span>
-                        <span>{formatFileSize(selectedFile.size)}</span>
-                      </div>
+                      {uploadState === 'IDLE' && (
+                        <button
+                          onClick={() => {
+                            setSelectedFile(null);
+                            if (previewUrl) URL.revokeObjectURL(previewUrl);
+                            setPreviewUrl(null);
+                          }}
+                          className="text-[10px] text-rose-600 hover:text-rose-800 font-bold underline"
+                        >
+                          Change
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-slate-500 font-mono">
+                      <span className="px-1.5 py-0.2 bg-slate-200 text-slate-800 font-bold uppercase">
+                        {isPdf ? 'PDF DOCUMENT' : selectedFile.type || 'IMAGE'}
+                      </span>
+                      <span>•</span>
+                      <span>Plaintext: {formatFileSize(selectedFile.size)}</span>
+                    </div>
+
+                    <div className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-indigo-700">
+                      <Lock className="w-3 h-3" />
+                      <span>Ready for AES-256-GCM Client Encryption</span>
                     </div>
                   </div>
-                )}
+                </div>
 
-                {/* Optional Caption Input */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                    Optional Message Caption
+                {/* File Expiration Configuration (PRD Section 29, 30) */}
+                <div className="p-3 bg-white border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] space-y-2">
+                  <label className="text-xs font-black uppercase text-slate-900 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>File Retention & Expiration Policy</span>
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-xs">
+                    {[
+                      { label: 'Session Only', value: 'NEVER' },
+                      { label: '1 Hour', value: '1H' },
+                      { label: '24 Hours', value: '24H' },
+                      { label: '7 Days', value: '7D' },
+                      { label: '30 Days', value: '30D' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setExpiresInOption(opt.value)}
+                        disabled={uploadState === 'ENCRYPTING' || uploadState === 'UPLOADING'}
+                        className={`px-2 py-1.5 border-2 text-[11px] font-bold uppercase transition-colors ${
+                          expiresInOption === opt.value
+                            ? 'bg-indigo-600 border-slate-900 text-white font-black shadow-[2px_2px_0px_0px_rgba(15,23,42,1)]'
+                            : 'bg-slate-50 border-slate-300 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-sans">
+                    {expiresInOption === 'NEVER'
+                      ? 'File exists only while the session is active. Purged immediately on session termination.'
+                      : `Server will reject downloads and permanently purge ciphertext after ${expiresInOption}.`}
+                  </p>
+                </div>
+
+                {/* Optional Caption */}
+                <div className="space-y-1">
+                  <label className="text-xs font-black uppercase text-slate-700">
+                    Optional Caption (Max 500 characters)
                   </label>
                   <input
-                    id="attachment-caption-input"
                     type="text"
                     value={caption}
                     onChange={(e) => setCaption(e.target.value)}
-                    placeholder="Add an optional note or caption..."
-                    disabled={uploadState === 'UPLOADING'}
+                    placeholder="Add a message or description with this file..."
                     maxLength={500}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleStartUploadAndSend();
-                      }
-                    }}
+                    disabled={uploadState === 'ENCRYPTING' || uploadState === 'UPLOADING'}
+                    className="w-full px-3 py-2 bg-slate-50 border-2 border-slate-900 text-slate-900 text-xs font-mono focus:bg-white focus:border-indigo-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Cryptographic Progress & Upload State Bar */}
+            {(uploadState === 'ENCRYPTING' || uploadState === 'UPLOADING') && (
+              <div className="p-3.5 bg-slate-900 text-white border-2 border-slate-900 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <span className="flex items-center gap-2 text-emerald-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{uploadState === 'ENCRYPTING' ? 'ENCRYPTING CLIENT-SIDE...' : 'UPLOADING CIPHERTEXT...'}</span>
+                  </span>
+                  <span>{uploadProgress}%</span>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="w-full h-2 bg-slate-800 border border-slate-700 overflow-hidden">
+                  <motion.div
+                    className="h-full bg-emerald-500"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${uploadState === 'ENCRYPTING' ? 45 : Math.max(45, uploadProgress)}%` }}
+                    transition={{ ease: 'easeOut', duration: 0.2 }}
                   />
                 </div>
 
-                {/* Uploading Progress Bar (PRD Section 26) */}
-                {uploadState === 'UPLOADING' && (
-                  <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/80 space-y-2">
-                    <div className="flex items-center justify-between text-xs font-medium">
-                      <span className="text-emerald-400 flex items-center gap-1.5">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading secure file...
-                      </span>
-                      <span className="text-slate-300 font-mono">{uploadProgress}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-150 ease-out"
-                        style={{ width: `${uploadProgress}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
+                <p className="text-[11px] text-slate-300 font-mono truncate">{cryptoStage}</p>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="p-3 bg-rose-50 border-2 border-rose-600 text-rose-900 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <p className="font-sans leading-relaxed">{errorMessage}</p>
+              </div>
+            )}
+
+            {/* Success Feedback */}
+            {uploadState === 'SUCCESS' && (
+              <div className="p-3 bg-emerald-50 border-2 border-emerald-600 text-emerald-950 text-xs flex items-center gap-2 font-bold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Encrypted payload uploaded & broadcasted to session.</span>
               </div>
             )}
           </div>
 
-          {/* Footer Controls */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-800 bg-slate-900/90">
-            {selectedFile ? (
-              <button
-                id="attachment-change-file-button"
-                type="button"
-                onClick={resetState}
-                disabled={uploadState === 'UPLOADING'}
-                className="text-xs text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-40"
-              >
-                Choose different file
-              </button>
-            ) : (
-              <span className="text-xs text-slate-500">
-                Encrypted in-flight & memory-purged on close
-              </span>
-            )}
-
-            <div className="flex items-center gap-2.5 ml-auto">
-              <button
-                id="attachment-cancel-button"
-                type="button"
-                onClick={onClose}
-                disabled={uploadState === 'UPLOADING'}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800 transition-colors disabled:opacity-40"
-              >
-                Cancel
-              </button>
-
-              {selectedFile && (
-                <button
-                  id="attachment-send-button"
-                  type="button"
-                  onClick={handleStartUploadAndSend}
-                  disabled={uploadState === 'UPLOADING'}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  {uploadState === 'UPLOADING' ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Sending...</span>
-                    </>
-                  ) : uploadState === 'ERROR' ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Retry Upload</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Send {isPdf ? 'PDF' : 'Image'}</span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
+          {/* Modal Footer */}
+          <div className="p-4 border-t-2 border-slate-900 bg-slate-50 flex items-center justify-end gap-3">
+            <button
+              id="attachment-modal-cancel-button"
+              type="button"
+              onClick={onClose}
+              disabled={uploadState === 'ENCRYPTING' || uploadState === 'UPLOADING'}
+              className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-900 text-xs font-bold border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)]"
+            >
+              Cancel
+            </button>
+            <button
+              id="attachment-modal-encrypt-send-button"
+              type="button"
+              onClick={handleStartUploadAndSend}
+              disabled={!selectedFile || uploadState === 'ENCRYPTING' || uploadState === 'UPLOADING'}
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-x-[1px] active:translate-y-[1px]"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Encrypt & Transfer</span>
+            </button>
           </div>
         </motion.div>
       </div>

@@ -10,6 +10,11 @@ import { DestroyedScreen } from './components/DestroyedScreen.jsx';
 import { KickedScreen } from './components/KickedScreen.jsx';
 import { ArchitectureModal } from './components/ArchitectureModal.jsx';
 import {
+  generateIdentityKeyPair,
+  importPeerPublicKey,
+  deriveSharedWrappingKey,
+} from './services/crypto.js';
+import {
   playMessageReceivedSound,
   playFileReceivedSound,
   playUserJoinedSound,
@@ -20,12 +25,24 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [uiState, setUiState] = useState('HOME');
   const [activeSession, setActiveSession] = useState(null);
+
+  // Cryptographic In-Memory State (PRD Phase 3)
+  const [identityKeyPair, setIdentityKeyPair] = useState(null);
+  const [derivedSharedKeys, setDerivedSharedKeys] = useState(new Map());
+  const [selfWrappingKey, setSelfWrappingKey] = useState(null);
+  const [securityLogs, setSecurityLogs] = useState([]);
+  const [isRotatingKeys, setIsRotatingKeys] = useState(false);
+
   // Keep ref in sync so socket handlers (stale closures) can read current value
+  const activeSessionRef = useRef(null);
+  const identityKeyPairRef = useRef(null);
+
   const setActiveSessionAndRef = (val) => {
     const resolved = typeof val === 'function' ? val(activeSessionRef.current) : val;
     activeSessionRef.current = resolved;
     setActiveSession(resolved);
   };
+
   const [messages, setMessages] = useState([]);
   const [typingUsers, setTypingUsers] = useState([]);
   const [endingData, setEndingData] = useState(null);
@@ -39,14 +56,43 @@ export default function App() {
   const [urlPasskey, setUrlPasskey] = useState('');
 
   const typingMapRef = useRef(new Map());
-  const activeSessionRef = useRef(null); // always-current ref for use inside socket handlers
+
+  // Initialize client-side identity keypair on boot (PRD Section 14, 15)
+  useEffect(() => {
+    async function initCrypto() {
+      try {
+        const keyData = await generateIdentityKeyPair();
+        setIdentityKeyPair(keyData);
+        identityKeyPairRef.current = keyData;
+
+        // Derive self-wrapping key (used to encrypt sender's own copy of file keys)
+        const selfKey = await deriveSharedWrappingKey(
+          keyData.keyPair.privateKey,
+          keyData.keyPair.publicKey
+        );
+        setSelfWrappingKey(selfKey);
+      } catch (err) {
+        console.error('Failed to initialize Web Crypto ECDH key pair:', err);
+      }
+    }
+    initCrypto();
+  }, []);
 
   // Check URL parameters on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
       const searchParams = new URLSearchParams(window.location.search);
-      const joinId = searchParams.get('join');
-      const passkey = searchParams.get('key');
+
+      let joinId = searchParams.get('join') || searchParams.get('session');
+      let passkey = searchParams.get('key') || searchParams.get('passkey');
+
+      if (!joinId && hash.includes('join')) {
+        const hashParams = new URLSearchParams(hash.replace('#join?', ''));
+        joinId = hashParams.get('session');
+        passkey = hashParams.get('passkey');
+      }
+
       if (joinId) {
         setUrlSessionId(joinId.toUpperCase());
         if (passkey) setUrlPasskey(passkey.toUpperCase());
@@ -54,6 +100,28 @@ export default function App() {
       }
     }
   }, []);
+
+  // Compute shared wrapping keys whenever participants list or identity key changes
+  const computeDerivedKeys = async (participantsList, currentKeyData) => {
+    if (!currentKeyData || !participantsList) return;
+    const newMap = new Map();
+
+    for (const p of participantsList) {
+      if (p.publicKey && p.participantId !== activeSessionRef.current?.participantId) {
+        try {
+          const peerKey = await importPeerPublicKey(p.publicKey);
+          const sharedKey = await deriveSharedWrappingKey(
+            currentKeyData.keyPair.privateKey,
+            peerKey
+          );
+          newMap.set(p.participantId, sharedKey);
+        } catch (err) {
+          console.warn(`Failed to derive shared key for peer ${p.participantId}:`, err);
+        }
+      }
+    }
+    setDerivedSharedKeys(newMap);
+  };
 
   // Socket connection & event listeners setup
   useEffect(() => {
@@ -71,18 +139,12 @@ export default function App() {
     const handleSessionCreated = (data) => {
       setIsLoading(false);
       setActiveSessionAndRef(data);
-      setMessages([
-        // {
-        //   messageId: 'sys-start',
-        //   senderId: 'SYSTEM',
-        //   senderName: 'SYSTEM',
-        //   isOwner: false,
-        //   // text: `Secure ephemeral line [${data.sessionId}] initialized in Node.js RAM. You are the OWNER.`,
-        //   timestamp: Date.now(),
-        //   isSystem: true,
-        // },
-      ]);
+      if (data.securityLogs) {
+        setSecurityLogs(data.securityLogs);
+      }
+      setMessages([]);
       setUiState('ACTIVE');
+      computeDerivedKeys(data.participants, identityKeyPairRef.current);
     };
 
     // 2. Join success
@@ -90,6 +152,9 @@ export default function App() {
       setIsLoading(false);
       setJoinErrorMessage(null);
       setActiveSessionAndRef(data);
+      if (data.securityLogs) {
+        setSecurityLogs(data.securityLogs);
+      }
       setMessages([
         {
           messageId: 'sys-join',
@@ -102,6 +167,7 @@ export default function App() {
         },
       ]);
       setUiState('ACTIVE');
+      computeDerivedKeys(data.participants, identityKeyPairRef.current);
     };
 
     // 3. Join error
@@ -133,7 +199,36 @@ export default function App() {
         },
       ]);
 
+      computeDerivedKeys(data.participants, identityKeyPairRef.current);
       playUserJoinedSound();
+    };
+
+    // 4b. Peer Key Updated / Rotated (PRD Section 16, 35)
+    const handlePeerKeyUpdated = (data) => {
+      setActiveSessionAndRef((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          participants: data.participants,
+        };
+      });
+
+      computeDerivedKeys(data.participants, identityKeyPairRef.current);
+
+      if (data.isRotation) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            messageId: `rotate-${Date.now()}-${Math.random()}`,
+            senderId: 'SYSTEM',
+            senderName: 'SYSTEM',
+            isOwner: false,
+            text: `Participant ${data.username} rotated their ECDH cryptographic keypair.`,
+            timestamp: Date.now(),
+            isSystem: true,
+          },
+        ]);
+      }
     };
 
     // 5. Participant left voluntarily
@@ -159,6 +254,7 @@ export default function App() {
         },
       ]);
 
+      computeDerivedKeys(data.participants, identityKeyPairRef.current);
       playUserLeftSound();
     };
 
@@ -185,6 +281,7 @@ export default function App() {
         },
       ]);
 
+      computeDerivedKeys(data.participants, identityKeyPairRef.current);
       playUserLeftSound();
     };
 
@@ -204,12 +301,33 @@ export default function App() {
       }
     };
 
-    // 8b. Receive file (image or PDF) broadcast from server after HTTP upload
+    // 8b. Receive encrypted file broadcast from server
     const handleReceiveFile = (msg) => {
       setMessages((prev) => [...prev, { ...msg, type: msg.fileType }]);
       if (activeSessionRef.current && msg.senderId !== activeSessionRef.current.participantId) {
         playFileReceivedSound();
       }
+    };
+
+    // 8c. File Deleted Event (PRD Section 31)
+    const handleFileDeleted = (data) => {
+      setMessages((prev) =>
+        prev.filter((m) => m.fileId !== data.fileId)
+      );
+    };
+
+    // 8d. File Expired Event (PRD Section 30)
+    const handleFileExpired = (data) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.fileId === data.fileId ? { ...m, isExpired: true } : m
+        )
+      );
+    };
+
+    // 8e. Security Audit Log Event
+    const handleSecurityEvent = (event) => {
+      setSecurityLogs((prev) => [...prev, event]);
     };
 
     // 9. User typing event
@@ -254,6 +372,7 @@ export default function App() {
       setActiveSessionAndRef(null);
       setMessages([]);
       setTypingUsers([]);
+      setSecurityLogs([]);
       setUiState('DESTROYED');
     };
 
@@ -263,11 +382,15 @@ export default function App() {
     socket.on('join-success', handleJoinSuccess);
     socket.on('join-error', handleJoinError);
     socket.on('participant-joined', handleParticipantJoined);
+    socket.on('peer-key-updated', handlePeerKeyUpdated);
     socket.on('participant-left', handleParticipantLeft);
     socket.on('participant-kicked', handleParticipantKicked);
     socket.on('participant-kicked-self', handleKickedSelf);
     socket.on('receive-message', handleReceiveMessage);
     socket.on('receive-file', handleReceiveFile);
+    socket.on('file-deleted', handleFileDeleted);
+    socket.on('file-expired', handleFileExpired);
+    socket.on('security-event', handleSecurityEvent);
     socket.on('user-typing', handleUserTyping);
     socket.on('session-ending', handleSessionEnding);
     socket.on('session-destroyed', handleSessionDestroyed);
@@ -283,45 +406,115 @@ export default function App() {
       socket.off('join-success', handleJoinSuccess);
       socket.off('join-error', handleJoinError);
       socket.off('participant-joined', handleParticipantJoined);
+      socket.off('peer-key-updated', handlePeerKeyUpdated);
       socket.off('participant-left', handleParticipantLeft);
       socket.off('participant-kicked', handleParticipantKicked);
       socket.off('participant-kicked-self', handleKickedSelf);
       socket.off('receive-message', handleReceiveMessage);
       socket.off('receive-file', handleReceiveFile);
+      socket.off('file-deleted', handleFileDeleted);
+      socket.off('file-expired', handleFileExpired);
+      socket.off('security-event', handleSecurityEvent);
       socket.off('user-typing', handleUserTyping);
       socket.off('session-ending', handleSessionEnding);
       socket.off('session-destroyed', handleSessionDestroyed);
     };
-  }, [activeSession]);
+  }, []);
 
   // Actions
-  const handleCreateSession = (username) => {
+  const handleCreateSession = async (username) => {
     setIsLoading(true);
-    const socket = getSocket();
-    socket.emit('create-session', { username });
-  };
+    let keyData = identityKeyPairRef.current;
+    if (!keyData) {
+      keyData = await generateIdentityKeyPair();
+      setIdentityKeyPair(keyData);
+      identityKeyPairRef.current = keyData;
+    }
 
-  const handleJoinSession = (sessionId, passkey, username) => {
-    setIsLoading(true);
-    setJoinErrorMessage(null);
     const socket = getSocket();
-    socket.emit('join-session', { sessionId, passkey, username });
-  };
-
-  const handleSendMessage = (text) => {
-    if (!activeSession) return;
-    const socket = getSocket();
-    socket.emit('send-message', {
-      sessionId: activeSession.sessionId,
-      participantId: activeSession.participantId,
-      text,
-      type: 'text',
+    socket.emit('create-session', {
+      username,
+      publicKey: keyData.publicKeyString,
+      fingerprint: keyData.fingerprint,
     });
   };
 
-  const handleSendFileMessage = (_filePayload) => {
-    // The server broadcasts `receive-file` to all room members directly from
-    // the HTTP upload handler, so no additional socket emit is needed here.
+  const handleJoinSession = async (sessionId, passkey, username) => {
+    setIsLoading(true);
+    setJoinErrorMessage(null);
+
+    let keyData = identityKeyPairRef.current;
+    if (!keyData) {
+      keyData = await generateIdentityKeyPair();
+      setIdentityKeyPair(keyData);
+      identityKeyPairRef.current = keyData;
+    }
+
+    const socket = getSocket();
+    socket.emit('join-session', {
+      sessionId,
+      passkey,
+      username,
+      publicKey: keyData.publicKeyString,
+      fingerprint: keyData.fingerprint,
+    });
+  };
+
+  const handleRotateKeys = async () => {
+    if (!activeSession || isRotatingKeys) return;
+    setIsRotatingKeys(true);
+    try {
+      const newKeyData = await generateIdentityKeyPair();
+      setIdentityKeyPair(newKeyData);
+      identityKeyPairRef.current = newKeyData;
+
+      const selfKey = await deriveSharedWrappingKey(
+        newKeyData.keyPair.privateKey,
+        newKeyData.keyPair.publicKey
+      );
+      setSelfWrappingKey(selfKey);
+
+      await computeDerivedKeys(activeSession.participants, newKeyData);
+
+      const socket = getSocket();
+      socket.emit('rotate-keys', {
+        sessionId: activeSession.sessionId,
+        participantId: activeSession.participantId,
+        publicKey: newKeyData.publicKeyString,
+        fingerprint: newKeyData.fingerprint,
+      });
+    } catch (err) {
+      console.error('Failed to rotate cryptographic keypair:', err);
+    } finally {
+      setIsRotatingKeys(false);
+    }
+  };
+
+  const handleSendMessage = (text, fileData = null) => {
+    if (!activeSession) return;
+    const socket = getSocket();
+
+    if (fileData) {
+      // Direct local state update for sender for instant display with direct key
+      setMessages((prev) => [
+        ...prev,
+        {
+          messageId: `msg-${Date.now()}`,
+          senderId: activeSession.participantId,
+          senderName: activeSession.username,
+          isOwner: activeSession.isOwner,
+          timestamp: Date.now(),
+          ...fileData,
+        },
+      ]);
+    } else {
+      socket.emit('send-message', {
+        sessionId: activeSession.sessionId,
+        participantId: activeSession.participantId,
+        text,
+        type: 'text',
+      });
+    }
   };
 
   const handleTyping = (isTyping) => {
@@ -374,6 +567,10 @@ export default function App() {
     setUiState('HOME');
   };
 
+  const handleDeleteFileFromState = (fileId) => {
+    setMessages((prev) => prev.filter((m) => m.fileId !== fileId));
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       {/* Navigation Header */}
@@ -418,11 +615,17 @@ export default function App() {
             messages={messages}
             typingUsers={typingUsers}
             onSendMessage={handleSendMessage}
-            onSendFileMessage={handleSendFileMessage}
             onTyping={handleTyping}
             onKickParticipant={handleKickParticipant}
             onLeaveSession={handleLeaveSession}
             onEndSession={handleEndSession}
+            onDeleteFile={handleDeleteFileFromState}
+            identityKeyPair={identityKeyPair}
+            derivedSharedKeys={derivedSharedKeys}
+            selfWrappingKey={selfWrappingKey}
+            securityLogs={securityLogs}
+            onRotateKeys={handleRotateKeys}
+            isRotatingKeys={isRotatingKeys}
           />
         )}
 
