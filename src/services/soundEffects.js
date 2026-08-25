@@ -177,3 +177,55 @@ export function playPurgedSound() {
     osc.stop(now + 0.3);
   } catch {}
 }
+
+export function playFileSentSound() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(392, now); // G4
+    osc.frequency.setValueAtTime(523.25, now + 0.05); // C5
+    osc.frequency.setValueAtTime(783.99, now + 0.1); // G5
+
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(now + 0.18);
+  } catch {}
+}
+
+export function playFileReceivedSound() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(659.25, now); // E5
+    osc.frequency.setValueAtTime(880, now + 0.06); // A5
+    osc.frequency.setValueAtTime(1046.5, now + 0.12); // C6
+
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(now + 0.22);
+  } catch {}
+}

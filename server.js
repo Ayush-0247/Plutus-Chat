@@ -4,6 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
+import multer from 'multer';
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -15,16 +16,31 @@ const io = new Server(httpServer, {
 });
 
 
-
-
-
-
-
 const PORT = process.env.PORT || 3000;
 
 const sessions = new Map();
 // Map socketId -> { sessionId, participantId }
 const socketToParticipant = new Map();
+
+// In-memory ephemeral file store: fileId -> { buffer, mimetype, originalname, size, sessionId, uploadedBy, uploadedAt }
+const ephemeralFiles = new Map();
+
+// Multer configured for in-memory storage (zero disk writes)
+const MAX_IMAGE_SIZE = parseInt(process.env.MAX_IMAGE_SIZE || '10485760', 10);
+const MAX_PDF_SIZE = parseInt(process.env.MAX_PDF_SIZE || '26214400', 10);
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: Math.max(MAX_IMAGE_SIZE, MAX_PDF_SIZE) },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('INVALID_FILE_TYPE'));
+    }
+  },
+});
 
 // Helper to generate cryptographic random room IDs and passkeys
 function generateSessionId() {
@@ -122,6 +138,13 @@ function executeHardDestruction(sessionId) {
   session.participants.clear();
   session.bannedParticipantIds.clear();
   sessions.delete(sessionId);
+
+  // Purge all ephemeral files belonging to this session
+  for (const [fileId, meta] of ephemeralFiles) {
+    if (meta.sessionId === sessionId) {
+      ephemeralFiles.delete(fileId);
+    }
+  }
 }
 
 // REST endpoints for basic diagnostics
@@ -147,6 +170,110 @@ app.get('/api/session/:sessionId/check', (req, res) => {
     createdAt: session.createdAt,
     participantCount: session.participants.size,
   });
+});
+
+// --- File Transfer Routes (Phase 2) ---
+
+// POST /api/files/upload
+app.post('/api/files/upload', (req, res, next) => {
+  const sessionId = (req.headers['x-session-id'] || req.body?.sessionId || '').toUpperCase();
+  const participantId = req.headers['x-participant-id'] || req.body?.participantId || '';
+
+  const session = sessions.get(sessionId);
+  if (!session || session.status !== 'ACTIVE') {
+    return res.status(403).json({ success: false, code: 'SESSION_NOT_ACTIVE', message: 'Session is not active.' });
+  }
+  if (!session.participants.has(participantId)) {
+    return res.status(403).json({ success: false, code: 'UNAUTHORIZED', message: 'You are not a participant of this session.' });
+  }
+
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.message === 'INVALID_FILE_TYPE') {
+        return res.status(415).json({ success: false, code: 'INVALID_FILE_TYPE', message: 'Only JPEG, PNG, GIF, WebP images and PDFs are allowed.' });
+      }
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, code: 'FILE_TOO_LARGE', message: 'File exceeds the maximum allowed size.' });
+      }
+      return res.status(500).json({ success: false, code: 'UPLOAD_ERROR', message: err.message || 'Upload failed.' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, code: 'NO_FILE', message: 'No file was provided.' });
+    }
+
+    const { mimetype, originalname, size, buffer } = req.file;
+    const isPdf = mimetype === 'application/pdf';
+    const sizeLimit = isPdf ? MAX_PDF_SIZE : MAX_IMAGE_SIZE;
+
+    if (size > sizeLimit) {
+      return res.status(413).json({
+        success: false,
+        code: 'FILE_TOO_LARGE',
+        message: `File exceeds the ${isPdf ? 'PDF' : 'image'} size limit of ${Math.round(sizeLimit / 1048576)} MB.`,
+      });
+    }
+
+    const fileId = crypto.randomUUID();
+    ephemeralFiles.set(fileId, {
+      buffer,
+      mimetype,
+      originalname,
+      size,
+      sessionId,
+      uploadedBy: participantId,
+      uploadedAt: Date.now(),
+    });
+
+    const participant = session.participants.get(participantId);
+    const room = `ephemeral_session_${sessionId}`;
+    const caption = (req.body.caption || '').trim().slice(0, 500);
+
+    // Broadcast file message to all session participants via Socket.IO
+    io.to(room).emit('receive-file', {
+      messageId: crypto.randomUUID(),
+      fileId,
+      senderId: participantId,
+      senderName: participant?.username || 'Unknown',
+      isOwner: participant?.isOwner || false,
+      fileName: originalname,
+      fileSize: size,
+      mimeType: mimetype,
+      fileType: isPdf ? 'pdf' : 'image',
+      text: caption,
+      timestamp: Date.now(),
+    });
+
+    return res.json({ success: true, fileId, fileName: originalname, fileSize: size, mimeType: mimetype });
+  });
+});
+
+// GET /api/files/:fileId  — serve or download the file
+app.get('/api/files/:fileId', (req, res) => {
+  const { fileId } = req.params;
+  const sessionId = (req.query.sessionId || '').toUpperCase();
+  const participantId = req.query.participantId || '';
+  const forceDownload = req.query.download === 'true';
+
+  const file = ephemeralFiles.get(fileId);
+  if (!file) {
+    return res.status(404).json({ success: false, code: 'FILE_NOT_FOUND', message: 'File not found or session has ended.' });
+  }
+
+  // Validate requester is in the same session
+  const session = sessions.get(sessionId);
+  if (!session || file.sessionId !== sessionId || !session.participants.has(participantId)) {
+    return res.status(403).json({ success: false, code: 'UNAUTHORIZED', message: 'Access denied.' });
+  }
+
+  res.set('Content-Type', file.mimetype);
+  res.set('Content-Length', file.size);
+  if (forceDownload) {
+    res.set('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalname)}"`);
+  } else {
+    res.set('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalname)}"`);
+  }
+  return res.send(file.buffer);
 });
 
 // Socket.IO Event Handlers
