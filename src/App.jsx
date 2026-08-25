@@ -64,15 +64,15 @@ export default function App() {
       setIsLoading(false);
       setActiveSession(data);
       setMessages([
-        {
-          messageId: 'sys-start',
-          senderId: 'SYSTEM',
-          senderName: 'SYSTEM',
-          isOwner: false,
-          text: `Secure ephemeral line [${data.sessionId}] initialized in Node.js RAM. You are the OWNER.`,
-          timestamp: Date.now(),
-          isSystem: true,
-        },
+        // {
+        //   messageId: 'sys-start',
+        //   senderId: 'SYSTEM',
+        //   senderName: 'SYSTEM',
+        //   isOwner: false,
+        //   // text: `Secure ephemeral line [${data.sessionId}] initialized in Node.js RAM. You are the OWNER.`,
+        //   timestamp: Date.now(),
+        //   isSystem: true,
+        // },
       ]);
       setUiState('ACTIVE');
     };
