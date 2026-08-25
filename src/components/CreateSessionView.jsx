@@ -30,9 +30,9 @@ export const CreateSessionView = ({
             <h2 className="text-lg font-black text-slate-900 uppercase tracking-wide font-sans">
               Create Secure Line
             </h2>
-            <p className="text-xs text-slate-500 font-mono">
+            {/* <p className="text-xs text-slate-500 font-mono">
               Initialize a temporary owner-controlled room
-            </p>
+            </p> */}
           </div>
         </div>
 
@@ -51,13 +51,13 @@ export const CreateSessionView = ({
               autoFocus
               className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-900 focus:border-indigo-600 focus:bg-white text-slate-900 placeholder-slate-400 text-sm font-mono focus:outline-none shadow-inner"
             />
-            <p className="text-[11px] text-slate-500 mt-1.5 font-mono">
+            {/* <p className="text-[11px] text-slate-500 mt-1.5 font-mono">
               You will be granted OWNER privileges to manage participants and terminate the line.
-            </p>
+            </p> */}
           </div>
 
           {/* Security Features checklist */}
-          <div className="p-3.5 bg-slate-100 border-2 border-slate-900 space-y-2 text-[11px] text-slate-700">
+          {/* <div className="p-3.5 bg-slate-100 border-2 border-slate-900 space-y-2 text-[11px] text-slate-700">
             <div className="flex items-center gap-2 text-indigo-700 font-black uppercase">
               <KeyRound className="w-3.5 h-3.5" />
               <span>Automatic Security Generation</span>
@@ -65,7 +65,7 @@ export const CreateSessionView = ({
             <p className="text-slate-600 font-mono">
               A high-entropy Session ID and secret passkey will be generated in Node.js RAM upon creation.
             </p>
-          </div>
+          </div> */}
 
           {/* Actions */}
           <div className="flex items-center gap-3 pt-2">
