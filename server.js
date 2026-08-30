@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env' });
+dotenv.config({ path: '.env.local', override: true }); // .env.local takes priority
 import express from 'express';
 import http from 'http';
 import path from 'path';
@@ -5,6 +8,24 @@ import crypto from 'crypto';
 import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import multer from 'multer';
+
+import { connectDatabase, isDatabaseConnected, getConnectionStatus } from './src/server/config/database.js';
+import { generateSessionId } from './src/server/utils/generateSessionId.js';
+import { generatePasskey } from './src/server/utils/generatePasskey.js';
+import { hashPasskey, verifyPasskey } from './src/server/services/authenticationService.js';
+import {
+  createSessionRecord,
+  findSessionRecord,
+  isSessionIdTaken,
+  updateSessionStatus,
+  deleteSessionRecord,
+  addSessionBan,
+  isParticipantBanned,
+} from './src/server/services/sessionService.js';
+import { initSessionCleanup } from './src/server/utils/sessionCleanup.js';
+
+import { Session } from './src/server/models/Session.js';
+import { SessionBan } from './src/server/models/SessionBan.js';
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -15,17 +36,19 @@ const io = new Server(httpServer, {
   },
 });
 
-
 const PORT = process.env.PORT || 3000;
 
+// RAM-Only Ephemeral State
+// Map sessionId -> { ownerSocketId, participants: Map, bannedParticipantIds: Set, destroyAt, warningDurationMs, countdownDurationMs, destroyTimeoutId, status, endingReason }
 const sessions = new Map();
+
 // Map socketId -> { sessionId, participantId }
 const socketToParticipant = new Map();
 
 // In-memory ephemeral file store: fileId -> { buffer, mimetype, originalname, size, sessionId, uploadedBy, uploadedAt }
 const ephemeralFiles = new Map();
 
-// Multer configured for in-memory storage (zero disk writes)
+// Multer configured strictly for in-memory storage (zero disk writes)
 const MAX_IMAGE_SIZE = parseInt(process.env.MAX_IMAGE_SIZE || '10485760', 10);
 const MAX_PDF_SIZE = parseInt(process.env.MAX_PDF_SIZE || '26214400', 10);
 
@@ -42,33 +65,12 @@ const upload = multer({
   },
 });
 
-// Helper to generate cryptographic random room IDs and passkeys
-function generateSessionId() {
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let id = '';
-  const bytes = crypto.randomBytes(6);
-  for (let i = 0; i < 6; i++) {
-    id += chars[bytes[i] % chars.length];
-  }
-  return id;
-}
-
-function generatePasskey() {
-  const words = [
-    'ALPHA', 'BRAVO', 'COBALT', 'DELTA', 'ECHO', 'FALCON', 'GHOST', 'HAVEN',
-    'IRON', 'JADE', 'KRYPTO', 'LUNAR', 'NEO', 'ORION', 'PRISM', 'QUANTUM',
-    'RAVEN', 'SOLAR', 'TITAN', 'VORTEX', 'ZENITH'
-  ];
-  const word = words[crypto.randomInt(0, words.length)];
-  const num = crypto.randomInt(100, 999);
-  return `${word}-${num}`;
-}
-
 function getSessionRoom(sessionId) {
-  return `ephemeral_session_${sessionId}`;
+  return `ephemeral_session_${sessionId.toUpperCase()}`;
 }
 
 function getParticipantsArray(session) {
+  if (!session || !session.participants) return [];
   return Array.from(session.participants.values()).map((p) => ({
     participantId: p.participantId,
     username: p.username,
@@ -77,7 +79,14 @@ function getParticipantsArray(session) {
   }));
 }
 
-function initiateSessionDestruction(session, reason) {
+/**
+ * Initiates graceful multi-stage destruction countdown (5s warning + 10s countdown)
+ */
+async function initiateSessionDestruction(sessionId, reason) {
+  const normId = sessionId.toUpperCase();
+  const session = sessions.get(normId);
+  if (!session) return;
+
   if (session.status === 'ENDING' || session.status === 'DESTROYED') {
     return;
   }
@@ -89,9 +98,12 @@ function initiateSessionDestruction(session, reason) {
   const totalDuration = session.warningDurationMs + session.countdownDurationMs; // 15s total
   session.destroyAt = Date.now() + totalDuration;
 
-  const room = getSessionRoom(session.sessionId);
+  // Persist status change to database
+  await updateSessionStatus(normId, 'ENDING', reason);
+
+  const room = getSessionRoom(normId);
   io.to(room).emit('session-ending', {
-    sessionId: session.sessionId,
+    sessionId: normId,
     reason,
     destroyAt: session.destroyAt,
     warningDurationMs: session.warningDurationMs,
@@ -99,27 +111,28 @@ function initiateSessionDestruction(session, reason) {
     totalDurationMs: totalDuration,
   });
 
-  // Schedule final hard destruction and memory purge
-  session.destroyTimeoutId = setTimeout(() => {
-    executeHardDestruction(session.sessionId);
+  // Schedule hard destruction and memory/DB metadata purge
+  session.destroyTimeoutId = setTimeout(async () => {
+    await executeHardDestruction(normId);
   }, totalDuration);
 }
 
-function executeHardDestruction(sessionId) {
-  const session = sessions.get(sessionId);
-  if (!session) return;
+/**
+ * Executes hard destruction of session: purges RAM state, deletes DB metadata, and purges all temporary files
+ */
+async function executeHardDestruction(sessionId) {
+  const normId = sessionId.toUpperCase();
+  const session = sessions.get(normId);
+  const room = getSessionRoom(normId);
 
-  session.status = 'DESTROYED';
-  const room = getSessionRoom(sessionId);
-
-  // Broadcast terminal destruction event
+  // 1. Broadcast terminal destruction event to connected clients
   io.to(room).emit('session-destroyed', {
-    sessionId,
-    message: 'Session destroyed. All state has been completely purged from server RAM.',
+    sessionId: normId,
+    message: 'Session destroyed. All state and metadata have been completely purged.',
     timestamp: Date.now(),
   });
 
-  // Disconnect all sockets from room
+  // 2. Disconnect all sockets from room
   const socketsInRoom = io.sockets.adapter.rooms.get(room);
   if (socketsInRoom) {
     for (const socketId of socketsInRoom) {
@@ -131,51 +144,105 @@ function executeHardDestruction(sessionId) {
     }
   }
 
-  // Clear timers and completely delete session from memory
-  if (session.destroyTimeoutId) {
-    clearTimeout(session.destroyTimeoutId);
+  // 3. Clear timers and purge RAM session state
+  if (session) {
+    if (session.destroyTimeoutId) {
+      clearTimeout(session.destroyTimeoutId);
+    }
+    session.participants.clear();
+    session.bannedParticipantIds.clear();
+    sessions.delete(normId);
   }
-  session.participants.clear();
-  session.bannedParticipantIds.clear();
-  sessions.delete(sessionId);
 
-  // Purge all ephemeral files belonging to this session
+  // 4. Purge all ephemeral files belonging to this session from RAM
   for (const [fileId, meta] of ephemeralFiles) {
-    if (meta.sessionId === sessionId) {
+    if (meta.sessionId === normId) {
       ephemeralFiles.delete(fileId);
     }
   }
+
+  // 5. Delete persistent session metadata and bans from database (Section 40)
+  await deleteSessionRecord(normId);
+
+  console.log({ event: 'session-destroyed', sessionId: normId });
 }
 
-// REST endpoints for basic diagnostics
+// REST endpoints
 app.use(express.json());
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  const dbStatus = getConnectionStatus();
+  let dbSessionsCount = 0;
+  let dbBansCount = 0;
+
+  if (dbStatus.connected) {
+    try {
+      dbSessionsCount = await Session.countDocuments();
+      dbBansCount = await SessionBan.countDocuments();
+    } catch (e) {
+      // ignore
+    }
+  }
+
   res.json({
     status: 'ok',
-    activeSessionsCount: sessions.size,
+    database: dbStatus,
+    activeRAMSessionsCount: sessions.size,
+    dbSessionsCount,
+    dbBansCount,
     timestamp: Date.now(),
   });
 });
 
-app.get('/api/session/:sessionId/check', (req, res) => {
-  const { sessionId } = req.params;
-  const session = sessions.get(sessionId.toUpperCase());
-  if (!session) {
-    return res.json({ exists: false, status: 'NOT_FOUND' });
+app.get('/api/db-status', async (req, res) => {
+  try {
+    const dbStatus = getConnectionStatus();
+    let sessionsInDb = [];
+    let bansInDb = [];
+
+    if (dbStatus.connected) {
+      sessionsInDb = await Session.find().lean();
+      bansInDb = await SessionBan.find().lean();
+    }
+
+    res.json({
+      status: 'ok',
+      database: dbStatus,
+      documentsInSessions: sessionsInDb,
+      documentsInBans: bansInDb,
+      inMemoryActiveSessions: Array.from(sessions.keys()),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  return res.json({
-    exists: true,
-    status: session.status,
-    createdAt: session.createdAt,
-    participantCount: session.participants.size,
-  });
 });
 
-// --- File Transfer Routes (Phase 2) ---
+app.get('/api/session/:sessionId/check', async (req, res) => {
+  try {
+    const sessionId = (req.params.sessionId || '').toUpperCase();
+    const dbRecord = await findSessionRecord(sessionId);
+
+    if (!dbRecord) {
+      return res.json({ exists: false, status: 'NOT_FOUND' });
+    }
+
+    const ramSession = sessions.get(sessionId);
+
+    return res.json({
+      exists: true,
+      status: dbRecord.status,
+      createdAt: dbRecord.createdAt,
+      participantCount: ramSession ? ramSession.participants.size : 0,
+    });
+  } catch (err) {
+    return res.status(500).json({ exists: false, status: 'ERROR' });
+  }
+});
+
+// --- File Transfer Routes (Phase 2 Ephemeral Media) ---
 
 // POST /api/files/upload
-app.post('/api/files/upload', (req, res, next) => {
+app.post('/api/files/upload', (req, res) => {
   const sessionId = (req.headers['x-session-id'] || req.body?.sessionId || '').toUpperCase();
   const participantId = req.headers['x-participant-id'] || req.body?.participantId || '';
 
@@ -195,7 +262,7 @@ app.post('/api/files/upload', (req, res, next) => {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ success: false, code: 'FILE_TOO_LARGE', message: 'File exceeds the maximum allowed size.' });
       }
-      return res.status(500).json({ success: false, code: 'UPLOAD_ERROR', message: err.message || 'Upload failed.' });
+      return res.status(500).json({ success: false, code: 'UPLOAD_ERROR', message: 'Upload failed.' });
     }
 
     if (!req.file) {
@@ -226,7 +293,7 @@ app.post('/api/files/upload', (req, res, next) => {
     });
 
     const participant = session.participants.get(participantId);
-    const room = `ephemeral_session_${sessionId}`;
+    const room = getSessionRoom(sessionId);
     const caption = (req.body.caption || '').trim().slice(0, 500);
 
     // Broadcast file message to all session participants via Socket.IO
@@ -248,7 +315,7 @@ app.post('/api/files/upload', (req, res, next) => {
   });
 });
 
-// GET /api/files/:fileId  — serve or download the file
+// GET /api/files/:fileId — serve or download the ephemeral file
 app.get('/api/files/:fileId', (req, res) => {
   const { fileId } = req.params;
   const sessionId = (req.query.sessionId || '').toUpperCase();
@@ -276,23 +343,35 @@ app.get('/api/files/:fileId', (req, res) => {
   return res.send(file.buffer);
 });
 
-// Socket.IO Event Handlers
+// --- Socket.IO Event Handlers ---
 io.on('connection', (socket) => {
   // 1. Create Session (Owner)
-  socket.on('create-session', (payload = {}, callback) => {
+  socket.on('create-session', async (payload = {}, callback) => {
     try {
       const username = (payload.username || 'Session Creator').trim().slice(0, 32);
+
+      // Unique Session ID generation with database and RAM collision check
       let sessionId = generateSessionId();
-      while (sessions.has(sessionId)) {
+      while ((await isSessionIdTaken(sessionId)) || sessions.has(sessionId)) {
         sessionId = generateSessionId();
       }
 
+      // Generate high-entropy passkey and compute secure hash
       const passkey = generatePasskey();
+      const passkeyHash = await hashPasskey(passkey);
       const ownerParticipantId = crypto.randomUUID();
 
+      // 1. Persist minimal session metadata to Database (Passkey hash only, no plain passkey)
+      await createSessionRecord({
+        sessionId,
+        ownerParticipantId,
+        passkeyHash,
+        status: 'ACTIVE',
+      });
+
+      // 2. Initialize RAM-Only Ephemeral State
       const session = {
         sessionId,
-        passkey,
         ownerParticipantId,
         ownerSocketId: socket.id,
         participants: new Map(),
@@ -303,6 +382,7 @@ io.on('connection', (socket) => {
         endingReason: null,
         warningDurationMs: 5000,
         countdownDurationMs: 10000,
+        destroyTimeoutId: null,
       };
 
       const ownerParticipant = {
@@ -320,10 +400,12 @@ io.on('connection', (socket) => {
       const room = getSessionRoom(sessionId);
       socket.join(room);
 
+      console.log({ event: 'session-created', sessionId });
+
       const response = {
         success: true,
         sessionId,
-        passkey,
+        passkey, // returned to owner only so they can share it
         participantId: ownerParticipantId,
         username,
         isOwner: true,
@@ -333,53 +415,76 @@ io.on('connection', (socket) => {
       if (typeof callback === 'function') callback(response);
       else socket.emit('session-created', response);
     } catch (err) {
-      const errRes = { success: false, message: 'Failed to create ephemeral session' };
+      console.error('[Socket] create-session error:', err.message);
+      const errRes = { success: false, message: 'Unable to create session' };
       if (typeof callback === 'function') callback(errRes);
     }
   });
 
   // 2. Join Session
-  socket.on('join-session', (payload = {}, callback) => {
+  socket.on('join-session', async (payload = {}, callback) => {
     try {
       const reqSessionId = (payload.sessionId || '').trim().toUpperCase();
       const reqPasskey = (payload.passkey || '').trim().toUpperCase();
       const reqUsername = (payload.username || 'Anonymous').trim().slice(0, 32) || 'Participant';
       const existingParticipantId = payload.participantId;
 
-      const session = sessions.get(reqSessionId);
+      // 1. Authoritative lookup in Database metadata
+      const dbRecord = await findSessionRecord(reqSessionId);
 
-      // Decision Tree:
-      // 1. Session exists?
-      if (!session) {
+      if (!dbRecord) {
         const errorRes = { success: false, code: 'SESSION_NOT_FOUND', message: 'Session does not exist or was destroyed.' };
         if (typeof callback === 'function') return callback(errorRes);
         return socket.emit('join-error', errorRes);
       }
 
-      // 2. Session ACTIVE?
-      if (session.status !== 'ACTIVE') {
+      // 2. Session Status validation
+      if (dbRecord.status !== 'ACTIVE') {
         const errorRes = { success: false, code: 'SESSION_ENDING', message: 'Session is ending or destroyed and cannot accept new joiners.' };
         if (typeof callback === 'function') return callback(errorRes);
         return socket.emit('join-error', errorRes);
       }
 
-      // 3. Passkey valid?
-      if (session.passkey.toUpperCase() !== reqPasskey) {
+      // 3. Cryptographic Passkey Verification against secure hash
+      const isPasskeyValid = await verifyPasskey(reqPasskey, dbRecord.passkeyHash);
+      if (!isPasskeyValid) {
         const errorRes = { success: false, code: 'INVALID_PASSKEY', message: 'Invalid session passkey. Verification failed.' };
         if (typeof callback === 'function') return callback(errorRes);
         return socket.emit('join-error', errorRes);
       }
 
-      // 4. Participant banned?
-      if (existingParticipantId && session.bannedParticipantIds.has(existingParticipantId)) {
-        const errorRes = { success: false, code: 'PARTICIPANT_BANNED', message: 'You have been removed by the owner and are banned from this session.' };
-        if (typeof callback === 'function') return callback(errorRes);
-        return socket.emit('join-error', errorRes);
+      // 4. Session Ban validation (Database & RAM)
+      if (existingParticipantId) {
+        const isBanned = await isParticipantBanned(reqSessionId, existingParticipantId);
+        if (isBanned) {
+          const errorRes = { success: false, code: 'PARTICIPANT_BANNED', message: 'You have been removed by the owner and are banned from this session.' };
+          if (typeof callback === 'function') return callback(errorRes);
+          return socket.emit('join-error', errorRes);
+        }
       }
 
-      // 5. Allow Join
+      // 5. Establish/Attach RAM Session State
+      let session = sessions.get(reqSessionId);
+      if (!session) {
+        session = {
+          sessionId: reqSessionId,
+          ownerParticipantId: dbRecord.ownerParticipantId,
+          ownerSocketId: null,
+          participants: new Map(),
+          bannedParticipantIds: new Set(),
+          status: dbRecord.status,
+          createdAt: dbRecord.createdAt ? new Date(dbRecord.createdAt).getTime() : Date.now(),
+          destroyAt: null,
+          endingReason: null,
+          warningDurationMs: 5000,
+          countdownDurationMs: 10000,
+          destroyTimeoutId: null,
+        };
+        sessions.set(reqSessionId, session);
+      }
+
       const participantId = existingParticipantId || crypto.randomUUID();
-      const isOwner = participantId === session.ownerParticipantId;
+      const isOwner = participantId === dbRecord.ownerParticipantId;
 
       const participant = {
         participantId,
@@ -423,16 +528,18 @@ io.on('connection', (socket) => {
         participants: participantsList,
       });
     } catch (err) {
+      console.error('[Socket] join-session error:', err.message);
       const errRes = { success: false, code: 'SERVER_ERROR', message: 'Unexpected server error during join.' };
       if (typeof callback === 'function') callback(errRes);
     }
   });
 
-  // 3. Send Message (Ephemeral Relay Only, No Database)
+  // 3. Send Message (Strictly Ephemeral Socket.IO Relay Only — Never Persisted in DB or Disk)
   socket.on('send-message', (payload = {}, callback) => {
     try {
       const { sessionId, participantId, text } = payload;
-      const session = sessions.get(sessionId?.toUpperCase());
+      const normId = sessionId?.toUpperCase();
+      const session = sessions.get(normId);
 
       if (!session || session.status !== 'ACTIVE') {
         if (typeof callback === 'function') callback({ success: false, message: 'Session is not active' });
@@ -465,8 +572,8 @@ io.on('connection', (socket) => {
         timestamp: Date.now(),
       };
 
-      const room = getSessionRoom(session.sessionId);
-      // Immediately broadcast to all in the room
+      const room = getSessionRoom(normId);
+      // Immediately broadcast to all in room without saving to any collection or log
       io.to(room).emit('receive-message', messageObject);
 
       if (typeof callback === 'function') callback({ success: true, messageId: messageObject.messageId });
@@ -478,13 +585,14 @@ io.on('connection', (socket) => {
   // 4. Typing Indicator
   socket.on('typing', (payload = {}) => {
     const { sessionId, participantId, isTyping } = payload;
-    const session = sessions.get(sessionId?.toUpperCase());
+    const normId = sessionId?.toUpperCase();
+    const session = sessions.get(normId);
     if (!session || session.status !== 'ACTIVE') return;
 
     const participant = session.participants.get(participantId);
     if (!participant) return;
 
-    const room = getSessionRoom(sessionId);
+    const room = getSessionRoom(normId);
     socket.to(room).emit('user-typing', {
       participantId,
       username: participant.username,
@@ -493,17 +601,18 @@ io.on('connection', (socket) => {
   });
 
   // 5. Owner Kicks Participant
-  socket.on('kick-participant', (payload = {}, callback) => {
+  socket.on('kick-participant', async (payload = {}, callback) => {
     try {
       const { sessionId, participantId, targetParticipantId } = payload;
-      const session = sessions.get(sessionId?.toUpperCase());
+      const normId = sessionId?.toUpperCase();
+      const session = sessions.get(normId);
 
       if (!session) {
         if (typeof callback === 'function') callback({ success: false, message: 'Session not found' });
         return;
       }
 
-      // Check requester is the owner
+      // Check requester is owner
       if (participantId !== session.ownerParticipantId) {
         if (typeof callback === 'function') callback({ success: false, message: 'Only session owner can kick participants.' });
         return;
@@ -520,17 +629,18 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // 1. Mark as permanently banned in this session
+      // 1. Mark as permanently banned in this session in RAM and DB
       session.bannedParticipantIds.add(targetParticipantId);
+      await addSessionBan(normId, targetParticipantId);
 
       // 2. Disconnect target socket and notify them
       const targetSocket = io.sockets.sockets.get(target.socketId);
-      const room = getSessionRoom(session.sessionId);
+      const room = getSessionRoom(normId);
 
       if (targetSocket) {
         targetSocket.emit('participant-kicked-self', {
           reason: 'You were kicked from this session by the owner.',
-          sessionId: session.sessionId,
+          sessionId: normId,
         });
         targetSocket.leave(room);
         socketToParticipant.delete(target.socketId);
@@ -554,20 +664,21 @@ io.on('connection', (socket) => {
   });
 
   // 6. Voluntary Participant Leave
-  socket.on('leave-session', (payload = {}, callback) => {
+  socket.on('leave-session', async (payload = {}, callback) => {
     try {
       const { sessionId, participantId } = payload;
-      const session = sessions.get(sessionId?.toUpperCase());
+      const normId = sessionId?.toUpperCase();
+      const session = sessions.get(normId);
 
       if (session) {
         const participant = session.participants.get(participantId);
         if (participant) {
-          // If owner chooses to leave voluntarily, it triggers session termination!
+          // If owner leaves voluntarily, initiate session termination!
           if (participant.isOwner) {
-            initiateSessionDestruction(session, 'OWNER_LEFT');
+            await initiateSessionDestruction(normId, 'OWNER_LEFT');
           } else {
             session.participants.delete(participantId);
-            const room = getSessionRoom(session.sessionId);
+            const room = getSessionRoom(normId);
             socket.leave(room);
             socketToParticipant.delete(socket.id);
 
@@ -587,10 +698,11 @@ io.on('connection', (socket) => {
   });
 
   // 7. Owner Explicitly Ends Session
-  socket.on('end-session', (payload = {}, callback) => {
+  socket.on('end-session', async (payload = {}, callback) => {
     try {
       const { sessionId, participantId } = payload;
-      const session = sessions.get(sessionId?.toUpperCase());
+      const normId = sessionId?.toUpperCase();
+      const session = sessions.get(normId);
 
       if (!session) {
         if (typeof callback === 'function') callback({ success: false, message: 'Session not found' });
@@ -602,7 +714,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      initiateSessionDestruction(session, 'OWNER_ENDED');
+      await initiateSessionDestruction(normId, 'OWNER_ENDED');
       if (typeof callback === 'function') callback({ success: true });
     } catch (err) {
       if (typeof callback === 'function') callback({ success: false, message: 'Error ending session' });
@@ -610,13 +722,14 @@ io.on('connection', (socket) => {
   });
 
   // 8. Socket Disconnection Handler
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     const record = socketToParticipant.get(socket.id);
     if (!record) return;
 
     socketToParticipant.delete(socket.id);
     const { sessionId, participantId } = record;
-    const session = sessions.get(sessionId);
+    const normId = sessionId.toUpperCase();
+    const session = sessions.get(normId);
     if (!session) return;
 
     const participant = session.participants.get(participantId);
@@ -624,12 +737,10 @@ io.on('connection', (socket) => {
 
     // Check if the disconnected user is the Owner of an ACTIVE session
     if (participant.isOwner && session.status === 'ACTIVE') {
-      // Owner disconnect causes session termination as per PRD Invariant 8
-      initiateSessionDestruction(session, 'OWNER_LEFT');
+      await initiateSessionDestruction(normId, 'OWNER_LEFT');
     } else if (!participant.isOwner && session.status === 'ACTIVE') {
-      // Regular participant disconnected
       session.participants.delete(participantId);
-      const room = getSessionRoom(sessionId);
+      const room = getSessionRoom(normId);
       io.to(room).emit('participant-left', {
         participantId,
         username: participant.username,
@@ -641,6 +752,12 @@ io.on('connection', (socket) => {
 
 // Vite Middleware for Frontend Integration
 async function startServer() {
+  // Connect to MongoDB
+  await connectDatabase();
+
+  // Initialize automated cleanup for expired sessions and abandoned files
+  initSessionCleanup(ephemeralFiles, sessions);
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -656,7 +773,7 @@ async function startServer() {
   }
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Ephemeral Communication Server running on http://localhost:${PORT}`);
+    console.log(`Plutus Chat server running on http://localhost:${PORT}`);
   });
 }
 

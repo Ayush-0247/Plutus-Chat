@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, ShieldCheck, Cpu, Trash2, Key, Users, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { X, ShieldCheck, Database, Trash2, Key, Users, AlertTriangle, CheckCircle2, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const ArchitectureModal = ({ isOpen, onClose }) => {
@@ -22,10 +22,10 @@ export const ArchitectureModal = ({ isOpen, onClose }) => {
               </div>
               <div>
                 <h2 className="text-lg font-black font-sans uppercase tracking-wide text-slate-900">
-                  Ephemeral System Architecture & Invariants
+                  Privacy-Preserving Ephemeral Architecture
                 </h2>
                 <p className="text-xs text-slate-500 font-mono">
-                  Strict in-memory Node.js + Socket.IO lifecycle specification
+                  Phase 2: Minimal Session Metadata Storage & Ephemeral Communication State
                 </p>
               </div>
             </div>
@@ -42,11 +42,10 @@ export const ArchitectureModal = ({ isOpen, onClose }) => {
             {/* Core Principle */}
             <div className="p-4 bg-slate-100 border-2 border-slate-900 text-slate-900">
               <p className="font-black text-xs tracking-wider uppercase text-indigo-700 mb-1">
-                Core Engineering Axiom
+                Core Architectural Rule
               </p>
-              <p className="text-xs text-slate-700 leading-relaxed">
-                "A communication session should exist only for as long as the session is active.
-                No database, no disk logs, no post-termination history. When the owner terminates or disconnects, the Node.js RAM state is hard-purged."
+              <p className="text-xs text-slate-700 leading-relaxed font-sans">
+                <strong>"The database stores session metadata, not communication content."</strong> The platform provides the infrastructure required to communicate without becoming a permanent archive. Messages, images, PDFs, and active participant states remain strictly ephemeral in RAM and are never stored in the database.
               </p>
             </div>
 
@@ -54,42 +53,78 @@ export const ArchitectureModal = ({ isOpen, onClose }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="p-3.5 bg-slate-50 border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] space-y-1.5">
                 <div className="flex items-center gap-2 text-indigo-700 text-xs font-black uppercase">
-                  <Key className="w-4 h-4" />
-                  Dual-Factor Admission
+                  <Lock className="w-4 h-4" />
+                  Hashed Passkey Auth
                 </div>
                 <p className="text-xs text-slate-600">
-                  Link alone is never sufficient. Both the cryptographic Session ID + high-entropy Passkey are strictly required.
+                  Raw passkeys are never stored in MongoDB. Only secure cryptographic hashes (bcrypt) are retained for admission verification.
                 </p>
               </div>
 
               <div className="p-3.5 bg-slate-50 border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] space-y-1.5">
                 <div className="flex items-center gap-2 text-emerald-700 text-xs font-black uppercase">
-                  <Cpu className="w-4 h-4" />
-                  Zero Persistent Storage
+                  <Database className="w-4 h-4" />
+                  Zero Message / File DB
                 </div>
                 <p className="text-xs text-slate-600">
-                  Server operates in-memory (Node.js RAM <code className="text-emerald-700 font-bold">Map()</code>). Messages are transiently relayed through Socket.IO with zero disk storage.
+                  Hard architectural constraint: No messages collection, no files collection, no chat history, and no permanent user accounts.
                 </p>
               </div>
 
               <div className="p-3.5 bg-slate-50 border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] space-y-1.5">
                 <div className="flex items-center gap-2 text-amber-700 text-xs font-black uppercase">
                   <Users className="w-4 h-4" />
-                  Owner Authority & Ban
+                  Session-Scoped Moderation
                 </div>
                 <p className="text-xs text-slate-600">
-                  Only the creator has owner privileges to kick participants. A kicked participant ID is permanently barred from rejoining that active session.
+                  Owner authority allows kicking participants. Session-specific ban records persist in <code className="text-amber-800 font-bold">session_bans</code> until session destruction.
                 </p>
               </div>
 
               <div className="p-3.5 bg-slate-50 border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] space-y-1.5">
                 <div className="flex items-center gap-2 text-rose-700 text-xs font-black uppercase">
                   <Trash2 className="w-4 h-4" />
-                  Authoritative Termination
+                  Hard Destruction & Purge
                 </div>
                 <p className="text-xs text-slate-600">
-                  Manual end or owner disconnect triggers a 15-second server-authoritative countdown (5s warning + 10s countdown) followed by immediate total memory wipe.
+                  Owner termination or disconnect initiates a 15s countdown followed by complete deletion of RAM state, temporary files, and database metadata.
                 </p>
+              </div>
+            </div>
+
+            {/* RAM vs Database Matrix */}
+            <div className="border-2 border-slate-900 p-3.5 bg-slate-50 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] space-y-2">
+              <h3 className="text-xs uppercase tracking-wider text-slate-900 font-black">
+                Responsibility Separation Matrix
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                <div className="p-2.5 bg-white border border-slate-300 space-y-1">
+                  <div className="font-bold text-indigo-700 uppercase flex items-center gap-1.5">
+                    <Database className="w-3.5 h-3.5" />
+                    Database Metadata (Persistent)
+                  </div>
+                  <ul className="list-disc list-inside text-slate-600 space-y-0.5">
+                    <li>Session ID & Owner Participant UUID</li>
+                    <li>Cryptographic Passkey Hash</li>
+                    <li>Status (ACTIVE, ENDING, DESTROYED)</li>
+                    <li>Creation & Expiration Timestamps</li>
+                    <li>Session-Specific Ban Records</li>
+                  </ul>
+                </div>
+
+                <div className="p-2.5 bg-white border border-slate-300 space-y-1">
+                  <div className="font-bold text-emerald-700 uppercase flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Server RAM State (Ephemeral)
+                  </div>
+                  <ul className="list-disc list-inside text-slate-600 space-y-0.5">
+                    <li>Active Socket connections & rooms</li>
+                    <li>Connected participant list & usernames</li>
+                    <li>Real-time message & typing relay</li>
+                    <li>In-memory temporary file buffers</li>
+                    <li>Destruction countdown timers</li>
+                  </ul>
+                </div>
               </div>
             </div>
 
@@ -111,7 +146,7 @@ export const ArchitectureModal = ({ isOpen, onClose }) => {
                 <span className="text-slate-400 hidden sm:inline font-black">➔</span>
                 <div className="flex items-center gap-1.5 text-rose-800 font-bold">
                   <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>3. DESTROYED (RAM Purged)</span>
+                  <span>3. DESTROYED (RAM & DB Purged)</span>
                 </div>
               </div>
             </div>

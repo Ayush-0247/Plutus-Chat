@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, KeyRound, Radio } from 'lucide-react';
+import { ArrowRight, Radio } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export const CreateSessionView = ({
