@@ -1,0 +1,970 @@
+================================================================================
+  PLUTUS SECURE LINE — COMPLETE TECHNICAL EXPLAINER (v2 — FULL ANALYSIS)
+  Project: Ephemeral Secure Communication Line
+  Files Analysed: server.js, App.jsx, ActiveSessionView.jsx, AttachmentModal.jsx,
+                  ImageLightboxModal.jsx, PdfViewerModal.jsx, EndingCountdownModal.jsx,
+                  DestroyedScreen.jsx, KickedScreen.jsx, ArchitectureModal.jsx,
+                  HomeView.jsx, CreateSessionView.jsx, JoinSessionView.jsx,
+                  Navbar.jsx, services/api.js, services/socket.js,
+                  services/soundEffects.js, package.json, render.yaml,
+                  .env.example, vite.config.js
+================================================================================
+
+
+================================================================================
+SECTION 1: VERCEL VS RENDER — WHY VERCEL WILL NOT WORK
+================================================================================
+
+This project CANNOT be deployed on Vercel. This is not a configuration issue —
+it is a fundamental architectural mismatch.
+
+Vercel is a "serverless" / "edge function" platform. Every incoming request
+triggers a fresh, isolated function that lives for a few seconds and then dies.
+There is no persistent process in between requests.
+
+This project requires THREE things that are incompatible with Vercel:
+
+1. PERSISTENT WEBSOCKET CONNECTIONS (Socket.IO)
+   Socket.IO requires a long-lived TCP connection between the browser and server.
+   Vercel terminates connections after a short time limit (typically 10-30s).
+   All real-time chat would immediately break.
+
+2. PERSISTENT IN-MEMORY STATE (JavaScript Maps)
+   All sessions, participants, and files are stored in:
+     - sessions          : a JavaScript Map() that lives in Node.js RAM
+     - socketToParticipant : another Map tracking who is who
+     - ephemeralFiles    : a Map holding file byte buffers
+   These Maps must persist across ALL requests from ALL users simultaneously.
+   On Vercel, each function invocation has a fresh, empty memory space. The
+   Maps would be empty every request. No session could ever be found.
+
+3. A SINGLE UNIFIED EXPRESS + HTTP SERVER
+   The project runs one process: Express handles HTTP, and the same HTTP server
+   is handed to Socket.IO. Vercel does not support this model.
+
+WHAT TO USE INSTEAD:
+The project already includes a render.yaml file which configures it for
+Render.com. Render provides a real, persistent Node.js process that stays alive
+continuously. Other compatible platforms include Railway, Fly.io,
+DigitalOcean App Platform, Heroku, or any VPS running Node.js directly.
+
+THE render.yaml CONFIGURES:
+  - Service type: web (persistent HTTP server, not serverless)
+  - Runtime: node
+  - Build command: npm install && npm run build
+  - Start command: npm start (runs dist/server.cjs)
+  - NODE_ENV: production
+  - When NODE_ENV=production, the server serves the built React app from the
+    dist/ folder instead of using the Vite dev server.
+
+
+================================================================================
+SECTION 2: WHO IS THE SERVER? WHICH DEVICE IS IT?
+================================================================================
+
+When deployed, there is exactly one server: the Render.com cloud virtual machine
+running your Node.js process (server.js / dist/server.cjs).
+
+Nobody's personal device is the server. Not the session creator. Not the joiner.
+Not anyone. Every person using the app — including the person who created the
+session — is a CLIENT (a browser) connecting to the Render cloud server.
+
+HOW THE NETWORK TOPOLOGY WORKS:
+
+  [Creator's Browser] --WebSocket--> [Render Server]
+  [Joiner 1 Browser]  --WebSocket--> [Render Server]
+  [Joiner 2 Browser]  --WebSocket--> [Render Server]
+  [Joiner 3 Browser]  --WebSocket--> [Render Server]
+
+All four browsers connect to the SAME central Render server. None of them
+connect to each other directly. Every message, every file, every typing
+indicator goes through the Render server as the central relay point.
+
+The "owner" / creator is just a browser with extra permissions — they can kick
+others and end the session. They are NOT hosting anything on their device.
+
+SOCKET CONNECTION DETAILS (from socket.js):
+  - Protocol: Socket.IO over WebSocket (falls back to HTTP long-polling if
+    WebSocket is blocked by a firewall or corporate proxy)
+  - Auto-reconnect: YES. If a user loses internet briefly, the client will
+    automatically try to reconnect up to 10 times with a 1-second delay between
+    each attempt.
+  - Server URL resolution:
+    * If the VITE_SERVER_URL environment variable is set, it uses that.
+    * In production (deployed), it uses the same domain as the web page
+      (window.location.origin), so no cross-origin issues.
+    * In local development, it defaults to http://localhost:3000.
+
+
+================================================================================
+SECTION 3: WHERE ARE CHATS (TEXT MESSAGES) STORED?
+================================================================================
+
+Text messages are stored NOWHERE permanently. Here is the exact flow:
+
+STEP-BY-STEP MESSAGE JOURNEY:
+
+  1. User types a message and presses Enter (or clicks Send).
+  2. The browser calls handleSend() in ActiveSessionView.jsx.
+  3. handleSend() calls handleSendMessage() which emits a Socket.IO event:
+       socket.emit('send-message', { sessionId, participantId, text, type })
+  4. The Render server receives this event in the 'send-message' handler.
+  5. The server validates: session is ACTIVE, sender is not banned, text is
+     1-2000 characters. If all checks pass:
+  6. The server builds a messageObject with a random UUID and timestamp.
+  7. The server IMMEDIATELY broadcasts it to all in the room:
+       io.to(room).emit('receive-message', messageObject)
+  8. Every browser in the session receives this event.
+  9. React's handleReceiveMessage() function appends it to the messages array
+     in React state (useState, browser RAM only).
+  10. The message is rendered on screen.
+
+THE SERVER DOES ZERO OF THE FOLLOWING:
+  - Does NOT write the message to any file
+  - Does NOT insert it into any database
+  - Does NOT log the message content to the console
+  - Does NOT store it in the sessions Map or anywhere else
+  - The message passes through the server in microseconds and is gone
+
+WHERE DO MESSAGES "LIVE" AFTER STEP 9?
+  - ONLY in each browser's React state (a JavaScript array in browser RAM).
+  - This means messages exist only for as long as the browser tab is open
+    and the React state is alive.
+  - If a user refreshes the page, all messages they had seen are gone.
+  - If a user joins mid-session, they see NO previous messages. There is no
+    history replay because nothing was ever stored.
+
+MESSAGE LENGTH LIMIT: 2,000 characters per message (enforced in server.js).
+MESSAGE COUNT LIMIT: None. Unlimited messages per session.
+
+
+================================================================================
+SECTION 4: ARE MESSAGES TRULY CLEARED COMPLETELY?
+================================================================================
+
+YES — from the server's perspective, they were never there to be cleared.
+Messages exist on the server for a fraction of a millisecond during relay only.
+
+FROM THE SERVER (completely clear):
+  - The message object is created locally inside the handler function.
+  - After io.to(room).emit() is called, the function returns.
+  - The local messageObject variable goes out of scope immediately.
+  - JavaScript garbage collector reclaims that tiny bit of RAM.
+  - No logs, no files, no database entries exist.
+
+FROM EACH USER'S BROWSER (cleared on session end):
+  - When the session ends, handleSessionDestroyed() in App.jsx runs:
+      setMessages([])       <- empties the React messages array
+      setTypingUsers([])    <- clears typing state
+      setActiveSession(null) <- clears session identity
+      setUiState('DESTROYED') <- switches screen to DestroyedScreen component
+  - All message data in React state is garbage collected by the browser.
+  - The browser displays the DestroyedScreen with a "Memory Wipe Verification"
+    panel showing all the cleanup operations that just ran.
+
+HONEST CAVEATS (edge cases, not security holes for most use cases):
+
+  1. JavaScript GC timing: Even after sessions.delete() and setMessages([]),
+     the actual RAM bytes are freed on the JS garbage collector's schedule,
+     not instantly. This is normal for all memory-managed languages (Python,
+     Java, C# all do the same). The data is UNREACHABLE but takes milliseconds
+     to seconds to be physically overwritten.
+
+  2. Browser back button / page state: Some browsers cache page state. If a
+     user pressed the browser back button immediately after session end, they
+     might briefly see a stale screen. This is a browser quirk, not a server
+     data leak.
+
+  3. Screenshots: Nothing prevents users from screenshotting the chat.
+
+  4. Network-level interception: Traffic between user and Render is encrypted
+     with HTTPS/WSS in production. However, if someone sits between the user
+     and the internet (e.g., a malicious hotspot or corporate proxy that does
+     SSL inspection), they could theoretically see the plaintext — because
+     this app has NO end-to-end encryption (more on this in Section 11).
+
+  5. Server-side observation window: Because this app has no E2E encryption,
+     the Render server processes all messages in plaintext during the relay.
+     If the server itself were compromised, messages could be intercepted at
+     relay time. After relay, they are gone.
+
+
+================================================================================
+SECTION 5: HOW ARE IMAGE AND PDF FILES SENT? THE EXACT PROCESS
+================================================================================
+
+File sending uses a DUAL-PATH design:
+  - Path 1: The binary file data goes via HTTP (multipart/form-data POST).
+  - Path 2: A metadata notification goes via Socket.IO (WebSocket).
+
+These two paths happen in sequence. The binary never touches the WebSocket and
+the WebSocket never carries the binary.
+
+DETAILED UPLOAD FLOW:
+
+PHASE A — USER SELECTS THE FILE (browser side):
+
+  1. User clicks the "Attach" paperclip button, or drags a file onto the chat.
+  2. The AttachmentModal opens (AttachmentModal.jsx).
+  3. The browser validates the file CLIENT-SIDE first:
+     - Allowed types: JPEG, PNG, WEBP, GIF (images) or PDF
+     - Image size limit: 10 MB (10,485,760 bytes)
+     - PDF size limit: 25 MB (26,214,400 bytes)
+     - These limits are checked in the browser BEFORE uploading.
+  4. If it's an image, the browser creates a local object URL
+     (URL.createObjectURL) to show a thumbnail preview in the modal.
+     This preview is LOCAL — the file has not left the user's device yet.
+  5. User optionally types a caption (max 500 characters).
+  6. User clicks "Send Image" or "Send PDF".
+
+PHASE B — HTTP UPLOAD (browser to server):
+
+  7. uploadFileWithProgress() in api.js runs.
+  8. It creates a FormData object containing:
+     - The file binary data
+     - sessionId
+     - participantId
+     - caption text
+  9. An XMLHttpRequest (XHR) sends this to POST /api/files/upload.
+     Headers include x-session-id and x-participant-id.
+  10. A progress bar shows upload percentage as the XHR fires "progress" events.
+      The progress tracker calls onProgress({ loaded, total, percent }).
+
+PHASE C — SERVER RECEIVES AND STORES IN RAM:
+
+  11. The server's multer middleware receives the upload.
+      Multer is configured with multer.memoryStorage().
+      THE FILE IS NEVER WRITTEN TO THE SERVER'S HARD DISK.
+      The file bytes go directly into a Node.js Buffer object in RAM.
+  12. The server validates again SERVER-SIDE:
+      - Is the session ACTIVE?
+      - Is this participant actually in the session?
+      - Is the file type allowed?
+      - Is the file within the size limits?
+  13. A unique fileId (UUID) is generated with crypto.randomUUID().
+  14. The file is stored in the ephemeralFiles Map:
+        ephemeralFiles.set(fileId, {
+          buffer,      <- the actual file bytes (in RAM)
+          mimetype,
+          originalname,
+          size,
+          sessionId,   <- which session owns this file
+          uploadedBy,  <- which participant sent it
+          uploadedAt,  <- timestamp
+        });
+      The file now lives in server RAM under this fileId.
+
+PHASE D — SOCKET BROADCAST (metadata only):
+
+  15. After storing the file, the server emits 'receive-file' to ALL participants
+      in the session room. This Socket.IO event contains:
+        - messageId (new UUID)
+        - fileId (the key to retrieve the file from RAM)
+        - senderId and senderName
+        - fileName, fileSize, mimeType, fileType (image/pdf)
+        - text (the caption, if any)
+        - timestamp
+      IMPORTANT: The actual file bytes are NOT in this socket event.
+      Only the metadata and the fileId are broadcast.
+
+PHASE E — OTHER USERS RECEIVE AND DISPLAY:
+
+  16. All other participants' browsers receive the 'receive-file' socket event.
+  17. App.jsx's handleReceiveFile() appends this message to the messages array.
+  18. The chat shows a file card (image thumbnail or PDF card).
+  19. To DISPLAY the image, the browser makes a GET request to:
+        /api/files/{fileId}?sessionId=...&participantId=...
+      The server reads the buffer from ephemeralFiles RAM and sends it back.
+  20. To DOWNLOAD the file, the browser hits the same URL with ?download=true.
+
+HOW THE DRAG-AND-DROP UPLOAD WORKS:
+  - Users can drag a file directly onto the chat area.
+  - ActiveSessionView.jsx detects dragenter, dragover, dragleave, drop events.
+  - A fullscreen overlay "Drop to Encrypt & Transfer" appears during drag.
+  - When dropped, the file is "staged" and the AttachmentModal opens with
+    that file pre-loaded, skipping the file selection step.
+  - The rest of the upload process is identical to clicking "Attach".
+
+
+================================================================================
+SECTION 6: WHERE DO FILES ACTUALLY LIVE AND ARE THEY REALLY DELETED?
+================================================================================
+
+DURING AN ACTIVE SESSION:
+  - All files are in the ephemeralFiles Map in Node.js RAM on the Render server.
+  - NOTHING is on the server's hard disk for file data.
+  - The uploads/ folder in the project root is EMPTY AND UNUSED.
+    It exists because it was probably created early in development or is there
+    as a directory reference. Multer's memoryStorage configuration ensures
+    it is never written to. You can verify this: after many uploads in a
+    session, the uploads/ folder will still be completely empty.
+  - NOTHING is in any cloud storage (no S3, no Google Cloud Storage, no
+    Cloudinary, no database BLOBs). Just RAM.
+
+WHEN A SESSION ENDS:
+  - executeHardDestruction() runs this loop:
+      for (const [fileId, meta] of ephemeralFiles) {
+        if (meta.sessionId === sessionId) {
+          ephemeralFiles.delete(fileId);
+        }
+      }
+  - This removes all files belonging to that session from the Map.
+  - The Buffer objects (the actual bytes) are then unreachable and are
+    garbage collected by the Node.js runtime.
+
+IS THE DELETION REALLY COMPLETE?
+
+  WHAT IS DEFINITIVELY TRUE:
+  - No file was ever on disk. Zero bytes were written to any filesystem.
+  - Files are removed from the ephemeralFiles Map at session end.
+  - After GC, the bytes are physically gone from RAM.
+  - No cloud storage account was ever involved.
+
+  WHAT LINGERS BRIEFLY (not a practical security concern for most uses):
+  - GC timing: The Buffer bytes remain physically in RAM until Node.js GC
+    runs (milliseconds to seconds). They are unreachable but not zeroed yet.
+  - Browser cache: When a user previewed/downloaded a file, the browser may
+    have cached it. That cached copy on their device is outside server control.
+    If someone downloads a file and saves it, obviously it persists locally.
+
+  ABOUT THE uploads/ FOLDER:
+  - It is always empty. It is not used. You can delete it from the project
+    without any effect on the app's functionality.
+
+WHAT HAPPENS TO A FILE IF SOMEONE VIEWS IT MULTIPLE TIMES?
+  - Each view is a fresh GET request to /api/files/{fileId}.
+  - The server reads the same buffer from RAM each time.
+  - No additional copies are made. The one buffer is shared.
+  - The buffer is NOT consumed or deleted on each read.
+  - It only gets deleted when the session ends.
+
+
+================================================================================
+SECTION 7: FILE AND MESSAGE LIMITS — EXACT NUMBERS
+================================================================================
+
+TEXT MESSAGES:
+  - Max characters per message: 2,000 (enforced server-side in server.js)
+  - Max messages per session: UNLIMITED (no cap in the code)
+  - Messages are not stored server-side, so each message costs ~zero RAM
+    on the server. Only the browsers holding the message list in React state
+    are affected by high message volumes.
+
+IMAGES (JPEG, PNG, WEBP, GIF):
+  - Max size per image: 10 MB (10,485,760 bytes by default)
+    Configurable via MAX_IMAGE_SIZE environment variable on Render.
+  - Max number per session: UNLIMITED (no cap in the code)
+  - Each image occupies exactly its file size in server RAM until session ends.
+    10 images of 10 MB each = 100 MB of RAM consumed simultaneously.
+
+PDF FILES:
+  - Max size per PDF: 25 MB (26,214,400 bytes by default)
+    Configurable via MAX_PDF_SIZE environment variable on Render.
+  - Max number per session: UNLIMITED (no cap in the code)
+  - Same RAM consumption pattern as images.
+
+FILE CAPTIONS (optional text with a file):
+  - Max 500 characters per caption.
+  - Enforced in the AttachmentModal and also trimmed server-side.
+  - The caption travels with the file's socket metadata and is stored in each
+    browser's React state (along with the message), not on the server.
+
+SUMMARY TABLE:
+  Type           | Max Per File     | File Count Limit | Where it Lives on Server
+  ---------------|------------------|------------------|-------------------------
+  Text message   | 2,000 characters | Unlimited        | Nowhere (relay only)
+  Image caption  | 500 characters   | N/A              | Nowhere (relay only)
+  Image file     | 10 MB            | Unlimited        | Server RAM until session ends
+  PDF caption    | 500 characters   | N/A              | Nowhere (relay only)
+  PDF file       | 25 MB            | Unlimited        | Server RAM until session ends
+  Username       | 32 characters    | N/A              | Server RAM (session object)
+
+
+================================================================================
+SECTION 8: HOW DO PARTICIPANTS JOIN? THE INVITE LINK MECHANISM
+================================================================================
+
+There are two ways to join a session:
+
+METHOD 1 — MANUAL ENTRY:
+  - Joiner goes to the app, clicks "Join Session".
+  - Types the Session ID (6 characters, e.g., "AB3K7M") and
+    Passkey (e.g., "TITAN-482") manually.
+  - Clicks "Authenticate".
+
+METHOD 2 — INVITE LINK (AUTO-FILL):
+  - The owner clicks "COPY INVITE LINK" in the active session.
+  - This copies a URL like:
+      https://your-app.render.com/?join=AB3K7M&key=TITAN-482
+  - When someone opens this link, App.jsx reads the URL query params on mount:
+      const joinId = searchParams.get('join');
+      const passkey = searchParams.get('key');
+  - These are pre-filled into the Join Session form.
+  - The user just needs to enter their username and click "Authenticate".
+
+SECURITY NOTE ON THE INVITE LINK:
+  - The passkey IS embedded in the URL. This means if someone intercepts or
+    shares the link, they could join. The link should be shared carefully.
+  - This is a usability vs. security tradeoff the design deliberately makes.
+  - "Link alone is never sufficient" (per the app's architecture modal) is
+    slightly misleading — the link already contains both the ID and the key.
+    The only extra step is entering a username, which has no security value.
+  - There is a "TEST IN TAB" button that opens the invite URL in a new tab
+    in the same browser, useful for developers testing two participants.
+
+HOW SESSION IDs AND PASSKEYS ARE GENERATED:
+  - Session ID: 6 characters from a custom alphabet (no ambiguous chars like
+    0/O, 1/I) using crypto.randomBytes(6). Example: "AB3K7M"
+  - Passkey: A random word from a list of 21 words + a random 3-digit number,
+    using crypto.randomInt(). Example: "TITAN-482" or "QUANTUM-157"
+  - Both use Node.js's crypto module which produces cryptographically secure
+    random output (not Math.random()).
+
+
+================================================================================
+SECTION 9: THE FULL SESSION LIFECYCLE — EVERY STATE
+================================================================================
+
+The app has 7 UI states (uiState in App.jsx):
+
+  HOME     → User sees the main landing page with "Create Session" and "Join".
+  CREATING → User is entering their username to create a session.
+  JOINING  → User is entering Session ID + Passkey + Username to join.
+  ACTIVE   → Inside an active session. Chat is live.
+  ENDING   → A 15-second countdown overlay is shown (session about to die).
+  DESTROYED → Session has been hard-destroyed. The "Memory Wiped" screen shows.
+  KICKED   → This specific user was kicked by the owner.
+
+NOTE: ENDING is not a separate uiState value — it overlays the ACTIVE view.
+The EndingCountdownModal appears on top of the active chat while uiState is
+still 'ACTIVE'. The session-ending socket event sets endingData in React state,
+which triggers the overlay to appear.
+
+CREATION FLOW:
+  - Owner enters username (max 32 chars).
+  - Browser emits 'create-session' Socket.IO event with username.
+  - Server generates sessionId and passkey using crypto.
+  - Server creates the session object in the sessions Map:
+      {
+        sessionId,
+        passkey,
+        ownerParticipantId,
+        ownerSocketId,
+        participants: new Map(),
+        bannedParticipantIds: new Set(),
+        status: 'ACTIVE',
+        createdAt: Date.now(),
+        destroyAt: null,
+        ...
+      }
+  - Owner's socket joins the Socket.IO room (named "ephemeral_session_{id}").
+  - Server responds with the session credentials.
+  - uiState switches to 'ACTIVE'.
+
+JOIN FLOW:
+  - Joiner provides sessionId, passkey, username.
+  - Server validates all of the following in order:
+    a) Does the session exist?
+    b) Is the session status 'ACTIVE'?
+    c) Does the passkey match?
+    d) Is this participant banned?
+  - If all pass: participant is added, their socket joins the room.
+  - ALL other participants get a 'participant-joined' event with the updated list.
+  - A system message "username joined the session." appears in every browser.
+  - A join sound plays (playUserJoinedSound).
+
+DURING A SESSION:
+  - Text messages: relayed instantly, no storage.
+  - File uploads: stored in RAM, metadata broadcast via socket.
+  - Typing indicators: a 'typing' event is emitted when user types.
+    The typing indicator disappears after 2.5 seconds of no typing
+    (typingMapRef setTimeout in App.jsx). Server relays these but does
+    not store them.
+  - Participant list is maintained in the session.participants Map on the server.
+    Every browser has a copy of this list in its activeSession React state.
+
+TERMINATION TRIGGERS:
+  - Owner clicks "TERMINATE SESSION" and confirms.
+  - Owner's browser tab is closed / internet drops.
+  - Owner voluntarily sends 'leave-session' event.
+
+TERMINATION SEQUENCE:
+  initiateSessionDestruction() is called:
+  1. session.status = 'ENDING'
+  2. session.destroyAt = Date.now() + 15000 (15 seconds from now)
+  3. 'session-ending' event is broadcast to all in the room. Contains:
+       - reason (OWNER_LEFT or OWNER_ENDED)
+       - destroyAt timestamp
+       - warningDurationMs: 5000 (5 seconds)
+       - countdownDurationMs: 10000 (10 seconds)
+       - totalDurationMs: 15000
+  4. EndingCountdownModal appears on all browsers simultaneously.
+     It shows a live countdown updating every 50ms.
+     A tick sound plays each second, urgent for the last 5 seconds.
+     Phase 1 (first 5s): "SESSION IS CLOSING" warning phase.
+     Phase 2 (next 10s): "PURGING EPHEMERAL RAM" countdown phase.
+  5. A setTimeout on the server fires after 15 seconds:
+       executeHardDestruction(sessionId)
+  6. executeHardDestruction():
+     a) session.status = 'DESTROYED'
+     b) Broadcasts 'session-destroyed' to all sockets in the room.
+     c) All sockets leave the room (socket.leave(room)).
+     d) socketToParticipant entries are deleted for each socket.
+     e) session.participants.clear() — all participant records wiped.
+     f) session.bannedParticipantIds.clear() — ban list wiped.
+     g) sessions.delete(sessionId) — session removed from the Map entirely.
+     h) ephemeralFiles loop: all files belonging to this session are deleted.
+  7. Each browser receives 'session-destroyed':
+     a) setMessages([]) — clears all messages from React state.
+     b) setActiveSession(null) — clears session identity.
+     c) setUiState('DESTROYED') — shows the DestroyedScreen.
+     d) playPurgedSound() plays a descending tone to confirm purge.
+
+WHAT HAPPENS WHEN A NON-OWNER PARTICIPANT LEAVES:
+  - They send 'leave-session' event.
+  - Server removes them from session.participants.
+  - Their socket leaves the Socket.IO room.
+  - All remaining participants get 'participant-left' event.
+  - A system message "username left the session voluntarily." shows.
+  - A leave sound plays.
+  - THE SESSION CONTINUES for everyone else. Non-owner leaving does NOT
+    trigger session destruction.
+
+WHAT HAPPENS WHEN THE OWNER CLOSES THE BROWSER TAB:
+  - The browser's WebSocket closes.
+  - The server's 'disconnect' event fires for the owner's socket.
+  - The server checks: is this socket the owner of an ACTIVE session?
+  - Yes → initiateSessionDestruction() is called with reason 'OWNER_LEFT'.
+  - The same 15-second countdown begins for all remaining participants.
+
+WHAT HAPPENS IF A NON-OWNER CLOSES THEIR TAB:
+  - Same disconnect event fires.
+  - Server checks: not the owner.
+  - Simply removes them from participants.
+  - 'participant-left' event is broadcast.
+  - Session continues for everyone else.
+
+WHAT HAPPENS IF THE OWNER RECONNECTS WITHIN THE 15 SECONDS:
+  - The countdown has already started. There is NO mechanism to abort it.
+  - Even if the owner's browser reconnects during the countdown, the server's
+    setTimeout will still call executeHardDestruction() after the full 15
+    seconds. The countdown is not cancellable once started.
+
+
+================================================================================
+SECTION 10: THE KICK SYSTEM
+================================================================================
+
+The owner can kick any participant from the session.
+
+HOW KICKING WORKS:
+  1. Owner clicks the KICK button next to a participant's name in the sidebar.
+  2. A confirmation modal appears: "Kick & Bar Participant? — PRD Invariant 3:
+     Kicked participants are permanently banned from rejoining this active
+     session even if they have the link and passkey."
+  3. Owner confirms.
+  4. Browser emits 'kick-participant' Socket.IO event with targetParticipantId.
+  5. Server validates: requester is the owner.
+  6. Server adds targetParticipantId to session.bannedParticipantIds Set.
+  7. Server disconnects the target's socket from the room.
+  8. Server sends 'participant-kicked-self' event to the kicked user's socket.
+  9. The kicked user's browser receives this and switches uiState to 'KICKED',
+     showing the KickedScreen with the reason message.
+  10. Server removes the kicked participant from session.participants.
+  11. 'participant-kicked' event is broadcast to remaining participants.
+  12. System message: "username was kicked and permanently barred by the owner."
+
+CAN A KICKED PARTICIPANT REJOIN?
+  - If they try to rejoin using the same participantId (stored in browser or
+    session), the server will reject them:
+      session.bannedParticipantIds.has(existingParticipantId) → return error
+  - If they open an entirely fresh browser (new tab, incognito, different
+    device), they would get a NEW participantId, which is NOT in the ban list.
+    In that case, they could potentially rejoin with the same ID and passkey.
+  - The ban is per-participantId, not per-IP or per-username. This is a
+    known limitation — there is no IP-based ban.
+
+
+================================================================================
+SECTION 11: HOW THE PDF AND IMAGE VIEWERS WORK (CLIENT SIDE)
+================================================================================
+
+IMAGE VIEWER (ImageLightboxModal.jsx):
+  When a user clicks on a thumbnail in the chat:
+  - The ImageLightboxModal opens fullscreen.
+  - It fetches the image from /api/files/{fileId}?sessionId=...&participantId=...
+    (a fresh HTTP GET — the image is served from server RAM).
+  - Features:
+    * ZOOM IN/OUT: Buttons and keyboard shortcuts (+ / -). Max 4x, min 0.5x.
+    * ROTATE: Rotates 90 degrees clockwise. Keyboard shortcut: R.
+    * DOWNLOAD: An <a href download> link that fetches the file with
+      ?download=true, triggering a browser file save dialog.
+    * Close with Escape key or clicking outside.
+  - The image is rendered with referrerPolicy="no-referrer" for minor privacy.
+  - The display uses CSS transform (scale + rotate) on the img element,
+    powered by Framer Motion (the "motion" library).
+
+PDF VIEWER (PdfViewerModal.jsx):
+  When a user clicks "Preview" on a PDF message:
+  - The PdfViewerModal opens fullscreen.
+  - It embeds the PDF using an <iframe src={inlineUrl}>.
+    The browser's built-in PDF renderer (Chrome PDF viewer, Firefox PDF viewer)
+    handles the display. No external PDF library is used.
+  - The inlineUrl is /api/files/{fileId}?sessionId=...&participantId=...
+    This causes the server to serve the PDF bytes from RAM with Content-Type
+    application/pdf, which the browser iframe renders natively.
+  - "New Tab" button opens the PDF in a new browser tab.
+  - "Download" button fetches with ?download=true.
+  - Close with Escape key or clicking outside.
+  - Footer shows: "Protected session document — Auto-purged on session termination"
+
+IMPORTANT NOTE ABOUT FILE VIEWING AFTER SESSION ENDS:
+  - If the session is destroyed while a user has the image lightbox or PDF
+    viewer open, the next time they try to load or scroll the file, the GET
+    request to /api/files/{fileId} will return:
+      {"success": false, "code": "FILE_NOT_FOUND",
+       "message": "File not found or session has ended."}
+  - The browser will show a broken image or PDF loading failure.
+  - The file is gone from server RAM. It cannot be retrieved.
+
+
+================================================================================
+SECTION 12: THE SOUND EFFECTS SYSTEM
+================================================================================
+
+The app has 8 different sound effects. ALL sounds are SYNTHESIZED in real time
+using the Web Audio API. There are NO audio files (no .mp3, .wav, .ogg files
+anywhere in the project). All sounds are generated mathematically.
+
+This is done through soundEffects.js which uses Oscillator nodes:
+
+  - playMessageSentSound(): Short ascending sine tone (440Hz → 880Hz, 80ms)
+    Plays when YOU send a message.
+
+  - playMessageReceivedSound(): Triangle wave two-tone (D5 → A5, 140ms)
+    Plays when someone ELSE's message arrives.
+
+  - playUserJoinedSound(): Ascending sine (C5 → E5, 150ms)
+    Plays when any participant joins.
+
+  - playUserLeftSound(): Descending sine (E5 → A4, 150ms)
+    Plays when any participant leaves or is kicked.
+
+  - playCountdownTickSound(isUrgent): Tick sound during the destruction
+    countdown. Urgent mode (last 5 seconds) uses sawtooth wave at 880Hz.
+    Normal mode uses sine wave at 440Hz.
+
+  - playPurgedSound(): Slow descending sine (220Hz → 110Hz, 300ms)
+    Plays when the destroyed screen appears. Signals permanent session end.
+
+  - playFileSentSound(): 3-step rising sine (G4 → C5 → G5, 180ms)
+    Plays when you successfully send a file.
+
+  - playFileReceivedSound(): 3-step rising sine (E5 → A5 → C6, 220ms)
+    Plays when someone else's file arrives.
+
+The audio context is lazy-initialized — it only creates an AudioContext on
+first use, as required by modern browser autoplay policies. Sounds can be
+toggled on/off (there is a toggleSound() function, though the UI toggle
+button may be in the Navbar component).
+
+SERVER IMPACT OF SOUNDS: Zero. Sounds are entirely client-side. They consume
+zero server RAM, zero bandwidth (except the JavaScript code itself on first load).
+
+
+================================================================================
+SECTION 13: LOAD CAPACITY — HOW MUCH CAN THIS PROJECT HANDLE?
+================================================================================
+
+WHAT CONSUMES RESOURCES ON THE SERVER:
+
+  RAM (main bottleneck):
+  - Each Socket.IO WebSocket connection: ~50-100 KB of RAM overhead.
+  - Each session object (no files): ~1-5 KB (just metadata + participant Map).
+  - Each uploaded file: exactly equal to the file's size.
+    A 10 MB image = 10 MB of RAM for the duration of the session.
+    A 25 MB PDF = 25 MB of RAM for the duration of the session.
+
+  CPU (low impact):
+  - Message relay is near-zero CPU. No processing, just broadcasting.
+  - File upload parsing via multer: brief CPU spike during upload.
+  - No image processing, no compression, no rendering.
+
+  NETWORK BANDWIDTH:
+  - Text messages: tiny (~1 KB per message including JSON overhead).
+  - File uploads: determined by file size. A 10 MB image costs 10 MB of upload
+    bandwidth when sent, and 10 MB download bandwidth for each person who views it.
+    If 10 people view the same 10 MB image, that is 100 MB of download bandwidth.
+
+RENDER.COM FREE PLAN:
+  - 512 MB RAM
+  - Shared CPU
+  - SPINS DOWN after 15 minutes of inactivity (cold start delay ~30 seconds)
+  - Estimated text-only capacity: 100-300 simultaneous users
+  - Estimated with moderate files: 30-50 users before RAM is a concern
+  - 10 sessions with 5 x 10MB images each = 500 MB RAM → CRASH
+
+RENDER.COM STARTER PLAN ($7/month):
+  - 512 MB RAM, dedicated, always-on
+  - Better for production, no spin-down
+  - Same RAM math applies
+
+RENDER.COM STANDARD PLAN ($25/month):
+  - 1 GB RAM, dedicated
+  - Roughly 2x the file capacity of the starter plan
+
+CONCURRENT USER SCENARIOS:
+
+  Scenario A — Text only, no files:
+  - 500-2,000 concurrent users before CPU/bandwidth is a concern.
+  - RAM impact: minimal. Sessions without files barely use RAM.
+
+  Scenario B — Light file sharing (1-2 small files per session):
+  - 100-300 concurrent users across 20-30 sessions, comfortably.
+
+  Scenario C — Heavy file sharing (many large PDFs/images per session):
+  - RAM fills quickly. With 512 MB RAM, if each session has 50 MB of files,
+    you can have only ~8-10 such sessions before running out of RAM.
+  - RAM exhaustion causes Node.js to crash.
+  - Render auto-restarts the server, but ALL sessions and files are lost.
+
+WHAT HAPPENS ON RAM EXHAUSTION:
+  - The Node.js process runs out of memory.
+  - It throws a fatal "JavaScript heap out of memory" error.
+  - The process crashes.
+  - Render detects the crash and restarts the server automatically (usually
+    within 10-30 seconds).
+  - All sessions, participants, messages (browser copies survive), and files
+    are permanently gone from RAM.
+  - All users are disconnected.
+  - Each user's browser will attempt to reconnect (up to 10 retries, 1 second
+    apart). But the session no longer exists, so reconnection will not restore
+    the session state.
+
+KNOWN SCALABILITY CEILING:
+  - The app cannot scale horizontally (run multiple copies) because the sessions
+    Map is local to one Node.js process. If two server instances run behind a
+    load balancer, a user on Server A cannot join a session created on Server B.
+  - Fixing this requires:
+    1. Adding a Redis instance as a shared session store.
+    2. Using Socket.IO's Redis adapter for cross-server broadcasting.
+    3. Storing ephemeralFiles in Redis or a shared memory store.
+  - None of this is in the current codebase.
+
+NO RATE LIMITING:
+  - There is no rate limiting on message sending, file uploads, or join attempts.
+  - A malicious user could:
+    * Flood the server with thousands of 'send-message' events per second.
+    * Upload hundreds of 25 MB PDFs in rapid succession, filling RAM.
+    * Attempt to brute-force passkeys (though the 6-char alphanumeric session
+      ID + word-number passkey combination space is large enough to be impractical).
+  - Adding rate limiting (e.g., express-rate-limit for HTTP, socket.io middleware
+    for WebSocket) would significantly improve resilience.
+
+
+================================================================================
+SECTION 14: WHAT THE uploads/ FOLDER IS
+================================================================================
+
+The uploads/ directory exists in the project root. It is ALWAYS EMPTY.
+
+Here is why:
+
+Multer (the file upload library) supports two storage modes:
+  1. diskStorage: writes files to disk in a specified folder.
+  2. memoryStorage: keeps files in RAM as Buffer objects.
+
+This project uses memoryStorage:
+  const upload = multer({ storage: multer.memoryStorage(), ... });
+
+This means multer NEVER touches the uploads/ folder. The directory was likely
+created during early development or is a placeholder. It does nothing.
+
+You can safely delete this folder. It will not affect functionality. If multer
+is ever accidentally reconfigured to use diskStorage pointing at uploads/, THEN
+files would be written there — but in the current configuration, they are not.
+
+
+================================================================================
+SECTION 15: SECURITY — WHAT IS PROTECTED AND WHAT IS NOT
+================================================================================
+
+WHAT IS GENUINELY SECURE:
+  - Zero persistent storage: No database means no SQL injection risk, no data
+    breaches from a database being stolen.
+  - Cryptographic random IDs: Session IDs and participant IDs use Node.js crypto
+    module (crypto.randomBytes, crypto.randomUUID, crypto.randomInt) — not
+    Math.random(), which is predictable.
+  - File access control: To fetch a file, you need both a valid sessionId AND
+    a valid participantId from the same session. You cannot access files from
+    another session even if you know the fileId.
+  - Session isolation: Each session is a separate Socket.IO room. Participants
+    in one session cannot see or interact with participants in another.
+  - Owner-only administration: Only the session creator can kick participants
+    or end the session.
+
+WHAT IS NOT SECURE / MISSING:
+
+  1. NO END-TO-END ENCRYPTION (E2E):
+     This is the biggest gap. When a message is sent, the text travels as
+     plaintext inside the HTTPS/WSS encrypted tunnel. But the Render server
+     decrypts the HTTPS and reads the plaintext message in order to broadcast
+     it. If the Render server itself were compromised (or Render as a company
+     were compelled to enable logging), all message content would be visible.
+     TRUE E2E would require encrypting on the sender's browser with a key
+     that the server never sees, and decrypting on the receiver's browser.
+     This is not implemented.
+
+  2. NO RATE LIMITING:
+     As described in Section 13, there is no protection against message floods,
+     file upload spam, or passkey brute-forcing.
+
+  3. CORS IS SET TO WILDCARD (*):
+     The Socket.IO server allows connections from any origin:
+       cors: { origin: '*', methods: ['GET', 'POST'] }
+     In production, this should ideally be restricted to just the app's domain.
+
+  4. PASSKEY IN INVITE LINKS:
+     The invite URL contains the passkey as a query parameter. If this link
+     is shared, logged by a browser history, or intercepted in an HTTP log,
+     the passkey is exposed.
+
+  5. NO USER AUTHENTICATION:
+     Anyone who knows the Session ID and passkey can join. There is no account
+     system, no email verification, no identity verification of any kind.
+     Usernames are self-declared and not unique — two users can have the same
+     username in the same session.
+
+  6. KICKED USER CAN REJOIN WITH NEW IDENTITY:
+     As described in Section 10, the ban is based on participantId. Using a
+     different browser or clearing local state creates a new participantId,
+     bypassing the ban.
+
+  7. NO HTTPS ENFORCEMENT IN CODE:
+     The Express app itself does not redirect HTTP to HTTPS. It relies on the
+     Render platform to handle TLS termination. If deployed behind a proxy
+     that does not enforce HTTPS, traffic could be unencrypted.
+
+  8. CONTENT MODERATION:
+     There is no filtering or scanning of message content or uploaded files.
+     Any file passing the MIME type and size checks is accepted and served.
+
+
+================================================================================
+SECTION 16: COMPLETE QUICK-REFERENCE Q&A
+================================================================================
+
+Q: Can this be deployed on Vercel?
+A: No. Vercel is serverless. Socket.IO and in-memory state both require a
+   persistent Node.js process. Use Render.com (already configured via render.yaml).
+
+Q: Who is the server?
+A: Render.com's cloud virtual machine. No user's personal device is the server.
+
+Q: What happens to messages?
+A: Relayed through server RAM for microseconds, then gone from the server.
+   Displayed in each browser's React state until session ends or page refresh.
+
+Q: Are chats stored anywhere?
+A: No. No database. No files. No logs of message content.
+
+Q: When the session ends, are chats really gone?
+A: From the server — yes, they were never there to begin with. From browsers —
+   yes, React state is cleared when the 'session-destroyed' event arrives.
+
+Q: Where do images and PDFs go?
+A: Server RAM only (multer memoryStorage). Never written to disk.
+   The uploads/ folder is empty and unused.
+
+Q: Are files really deleted on session end?
+A: Yes. The ephemeralFiles Map entry is deleted. No disk copy exists.
+   GC reclaims the RAM bytes within seconds.
+
+Q: Can someone access a file after the session ends?
+A: No. GET /api/files/{fileId} returns FILE_NOT_FOUND once the session is gone.
+
+Q: Can I view a file multiple times during the session?
+A: Yes. Each view is a fresh HTTP GET served from the same RAM buffer.
+   The file is not deleted between reads.
+
+Q: How many messages can be sent?
+A: Unlimited. Max 2,000 characters each.
+
+Q: How many files can be sent?
+A: Unlimited count. But each file consumes server RAM until session ends.
+
+Q: What files are allowed?
+A: Images: JPEG, PNG, WEBP, GIF (max 10 MB each).
+   Documents: PDF only (max 25 MB each).
+   No .mp4, .docx, .zip, .exe, or any other format.
+
+Q: Can I add a caption to a file?
+A: Yes. Up to 500 characters.
+
+Q: How many people can be in one session?
+A: No hard cap per session in the code. Practically limited by server RAM.
+
+Q: How many sessions can exist at once?
+A: No hard cap. Limited by available RAM.
+
+Q: What happens if the server runs out of RAM?
+A: Node.js crashes. Render auto-restarts. All sessions and files are instantly
+   and permanently lost. All users are disconnected.
+
+Q: Can two server instances run at once?
+A: No. The sessions Map is local. Adding a second server would break sessions.
+   Redis would be needed to share state across servers.
+
+Q: What happens if the owner closes their browser tab?
+A: The server detects the disconnect. It starts a 15-second countdown and then
+   destroys the entire session for all participants.
+
+Q: Can the countdown be stopped once started?
+A: No. Once initiateSessionDestruction() is called, the setTimeout will always
+   fire and execute the hard destruction.
+
+Q: What happens if I refresh the page during an active session?
+A: You lose your browser React state (all messages you had received are gone
+   from your view). Your old socket ID also changes. However, the server still
+   has your participantId stored. If you had the Session ID and passkey saved,
+   you can rejoin and will be recognized as the same participant (or as a new
+   one if no participantId is provided). Message history will NOT be replayed.
+
+Q: Does the socket reconnect automatically?
+A: Yes. The socket.js client is configured with reconnection: true, up to 10
+   attempts with 1 second between each attempt. If the server restarts or the
+   connection drops briefly, it will attempt to reconnect.
+
+Q: Are sounds using audio files?
+A: No. All sounds are synthesized in real time using the Web Audio API.
+   No .mp3 or .wav files exist in the project.
+
+Q: Is there end-to-end encryption?
+A: No. The server relays messages in plaintext (inside HTTPS). The Render
+   server can technically read all message content during relay.
+
+Q: Is there rate limiting?
+A: No. A malicious user can spam messages or large file uploads.
+
+Q: Can a kicked user come back?
+A: If they try with the same browser/participantId, no — they are banned.
+   If they use a fresh browser with no stored participantId, yes, they can
+   rejoin because the ban is by participantId, not by IP or username.
+
+Q: Can regular participants end the session?
+A: No. Only the session owner/creator can end the session or trigger destruction
+   by leaving/disconnecting.
+
+Q: What does "STORAGE MODE: LOCAL DISK + RAM" in the sidebar mean?
+A: That label in the UI is INACCURATE. Looking at the actual code, multer uses
+   memoryStorage only — there is no disk storage for files. This appears to be
+   a misleading label in the sidebar footer. Everything is RAM-only.
+
+Q: What is the uploads/ folder for?
+A: Nothing. It is unused and always empty. The code never writes to it.
+
+================================================================================
+  END OF DOCUMENT — v2 COMPLETE ANALYSIS
+  Analysed: 2026-08-30
+  Based on: Full reading of all 20 source files in the project
+================================================================================
