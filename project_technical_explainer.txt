@@ -1,5 +1,5 @@
 ================================================================================
-  PLUTUS SECURE LINE — COMPLETE TECHNICAL EXPLAINER (v2 — FULL ANALYSIS)
+  PLUTUS SECURE LINE — COMPLETE TECHNICAL EXPLAINER (v3 — FULL ANALYSIS)
   Project: Ephemeral Secure Communication Line
   Files Analysed: server.js, App.jsx, ActiveSessionView.jsx, AttachmentModal.jsx,
                   ImageLightboxModal.jsx, PdfViewerModal.jsx, EndingCountdownModal.jsx,
@@ -7,7 +7,15 @@
                   HomeView.jsx, CreateSessionView.jsx, JoinSessionView.jsx,
                   Navbar.jsx, services/api.js, services/socket.js,
                   services/soundEffects.js, package.json, render.yaml,
-                  .env.example, vite.config.js
+                  .env.example, vite.config.js,
+                  src/server/config/database.js,
+                  src/server/models/Session.js,
+                  src/server/models/SessionBan.js,
+                  src/server/services/authenticationService.js,
+                  src/server/services/sessionService.js,
+                  src/server/utils/generateSessionId.js,
+                  src/server/utils/generatePasskey.js,
+                  src/server/utils/sessionCleanup.js
 ================================================================================
 
 
@@ -29,17 +37,18 @@ This project requires THREE things that are incompatible with Vercel:
    Vercel terminates connections after a short time limit (typically 10-30s).
    All real-time chat would immediately break.
 
-2. PERSISTENT IN-MEMORY STATE (JavaScript Maps)
-   All sessions, participants, and files are stored in:
+2. PERSISTENT IN-MEMORY STATE (JavaScript Maps) + MONGODB CONNECTION
+   All live sessions, participants, and ephemeral files are stored in:
      - sessions          : a JavaScript Map() that lives in Node.js RAM
      - socketToParticipant : another Map tracking who is who
      - ephemeralFiles    : a Map holding file byte buffers
-   These Maps must persist across ALL requests from ALL users simultaneously.
-   On Vercel, each function invocation has a fresh, empty memory space. The
-   Maps would be empty every request. No session could ever be found.
+   ADDITIONALLY, the server maintains a persistent MongoDB connection for
+   session metadata (passkeyHash, status, bans). Both the RAM Maps AND the
+   database connection require a continuously running Node.js process.
+   On Vercel, each invocation would have empty memory and no DB connection.
 
 3. A SINGLE UNIFIED EXPRESS + HTTP SERVER
-   The project runs one process: Express handles HTTP, and the same HTTP server
+   The project runs one process: Express handles HTTP, the same HTTP server
    is handed to Socket.IO. Vercel does not support this model.
 
 WHAT TO USE INSTEAD:
@@ -71,14 +80,16 @@ session — is a CLIENT (a browser) connecting to the Render cloud server.
 
 HOW THE NETWORK TOPOLOGY WORKS:
 
-  [Creator's Browser] --WebSocket--> [Render Server]
+  [Creator's Browser] --WebSocket--> [Render Server] <--> [MongoDB Atlas]
   [Joiner 1 Browser]  --WebSocket--> [Render Server]
   [Joiner 2 Browser]  --WebSocket--> [Render Server]
   [Joiner 3 Browser]  --WebSocket--> [Render Server]
 
 All four browsers connect to the SAME central Render server. None of them
-connect to each other directly. Every message, every file, every typing
-indicator goes through the Render server as the central relay point.
+connect to each other directly. The Render server additionally connects to
+MongoDB Atlas (or any MongoDB URI) for persisting session metadata only.
+Every message, every file, every typing indicator goes through the Render
+server as the central relay point. Messages and files are NEVER stored in MongoDB.
 
 The "owner" / creator is just a browser with extra permissions — they can kick
 others and end the session. They are NOT hosting anything on their device.
@@ -97,7 +108,49 @@ SOCKET CONNECTION DETAILS (from socket.js):
 
 
 ================================================================================
-SECTION 3: WHERE ARE CHATS (TEXT MESSAGES) STORED?
+SECTION 3: THE TWO-LAYER STATE ARCHITECTURE (NEW IN v3)
+================================================================================
+
+The new architecture uses a DUAL-LAYER state model:
+
+LAYER 1 — RAM (Ephemeral, Fast, Always Required):
+  sessions Map         : Live session state (participants, status, timers)
+  socketToParticipant  : Socket-to-participant mapping
+  ephemeralFiles Map   : File buffers (bytes in RAM, never on disk)
+
+  This layer is the source of truth for ALL real-time operations. Every
+  socket event handler reads and writes exclusively to these Maps. The RAM
+  layer is zero-persistence — it dies with the process.
+
+LAYER 2 — MongoDB (Persistent Metadata, Optional Fallback):
+  Session collection   : sessionId, ownerParticipantId, passkeyHash, status,
+                         createdAt, expiresAt, endingReason
+  SessionBan collection: sessionId, participantId, bannedAt
+
+  This layer stores ONLY the minimum metadata needed so that:
+    a) The passkey hash can be verified cryptographically at join time.
+    b) Session status (ACTIVE/ENDING/DESTROYED) survives server restarts.
+    c) Participant bans persist across reconnections and restarts.
+    d) Session ID collision-checking is authoritative (not just RAM-local).
+
+  WHAT IS NOT IN THE DATABASE:
+    - Message content (never stored anywhere)
+    - File data/buffers (RAM-only via ephemeralFiles Map)
+    - Participant usernames or socket IDs
+    - Typing indicators
+    - The plain-text passkey (only bcrypt hash stored)
+
+GRACEFUL DEGRADATION:
+  If MongoDB is unavailable (no MONGODB_URI env var set, or connection fails),
+  the server does NOT crash. sessionService.js contains in-memory fallback Maps:
+    - inMemorySessionMeta : replaces Session collection
+    - inMemorySessionBans : replaces SessionBan collection (as a Set of strings)
+  The app runs fully in this degraded mode — it just loses cross-restart
+  persistence and cross-instance coordination.
+
+
+================================================================================
+SECTION 4: WHERE ARE CHATS (TEXT MESSAGES) STORED?
 ================================================================================
 
 Text messages are stored NOWHERE permanently. Here is the exact flow:
@@ -109,8 +162,8 @@ STEP-BY-STEP MESSAGE JOURNEY:
   3. handleSend() calls handleSendMessage() which emits a Socket.IO event:
        socket.emit('send-message', { sessionId, participantId, text, type })
   4. The Render server receives this event in the 'send-message' handler.
-  5. The server validates: session is ACTIVE, sender is not banned, text is
-     1-2000 characters. If all checks pass:
+  5. The server validates: session is ACTIVE (RAM check only), sender is not
+     banned (RAM bannedParticipantIds Set), text is 1-2000 characters.
   6. The server builds a messageObject with a random UUID and timestamp.
   7. The server IMMEDIATELY broadcasts it to all in the room:
        io.to(room).emit('receive-message', messageObject)
@@ -121,7 +174,7 @@ STEP-BY-STEP MESSAGE JOURNEY:
 
 THE SERVER DOES ZERO OF THE FOLLOWING:
   - Does NOT write the message to any file
-  - Does NOT insert it into any database
+  - Does NOT insert it into MongoDB or any database
   - Does NOT log the message content to the console
   - Does NOT store it in the sessions Map or anywhere else
   - The message passes through the server in microseconds and is gone
@@ -139,7 +192,7 @@ MESSAGE COUNT LIMIT: None. Unlimited messages per session.
 
 
 ================================================================================
-SECTION 4: ARE MESSAGES TRULY CLEARED COMPLETELY?
+SECTION 5: ARE MESSAGES TRULY CLEARED COMPLETELY?
 ================================================================================
 
 YES — from the server's perspective, they were never there to be cleared.
@@ -181,7 +234,7 @@ HONEST CAVEATS (edge cases, not security holes for most use cases):
      with HTTPS/WSS in production. However, if someone sits between the user
      and the internet (e.g., a malicious hotspot or corporate proxy that does
      SSL inspection), they could theoretically see the plaintext — because
-     this app has NO end-to-end encryption (more on this in Section 11).
+     this app has NO end-to-end encryption (more on this in Section 15).
 
   5. Server-side observation window: Because this app has no E2E encryption,
      the Render server processes all messages in plaintext during the relay.
@@ -190,7 +243,7 @@ HONEST CAVEATS (edge cases, not security holes for most use cases):
 
 
 ================================================================================
-SECTION 5: HOW ARE IMAGE AND PDF FILES SENT? THE EXACT PROCESS
+SECTION 6: HOW ARE IMAGE AND PDF FILES SENT? THE EXACT PROCESS
 ================================================================================
 
 File sending uses a DUAL-PATH design:
@@ -236,9 +289,9 @@ PHASE C — SERVER RECEIVES AND STORES IN RAM:
       Multer is configured with multer.memoryStorage().
       THE FILE IS NEVER WRITTEN TO THE SERVER'S HARD DISK.
       The file bytes go directly into a Node.js Buffer object in RAM.
-  12. The server validates again SERVER-SIDE:
-      - Is the session ACTIVE?
-      - Is this participant actually in the session?
+  12. The server validates SERVER-SIDE (RAM check — no DB lookup needed):
+      - Is the session ACTIVE? (checked against RAM sessions Map)
+      - Is this participant actually in the session? (RAM check)
       - Is the file type allowed?
       - Is the file within the size limits?
   13. A unique fileId (UUID) is generated with crypto.randomUUID().
@@ -253,6 +306,7 @@ PHASE C — SERVER RECEIVES AND STORES IN RAM:
           uploadedAt,  <- timestamp
         });
       The file now lives in server RAM under this fileId.
+      IT IS NOT STORED IN MONGODB.
 
 PHASE D — SOCKET BROADCAST (metadata only):
 
@@ -287,17 +341,15 @@ HOW THE DRAG-AND-DROP UPLOAD WORKS:
 
 
 ================================================================================
-SECTION 6: WHERE DO FILES ACTUALLY LIVE AND ARE THEY REALLY DELETED?
+SECTION 7: WHERE DO FILES ACTUALLY LIVE AND ARE THEY REALLY DELETED?
 ================================================================================
 
 DURING AN ACTIVE SESSION:
   - All files are in the ephemeralFiles Map in Node.js RAM on the Render server.
   - NOTHING is on the server's hard disk for file data.
+  - NOTHING is in MongoDB for file data.
   - The uploads/ folder in the project root is EMPTY AND UNUSED.
-    It exists because it was probably created early in development or is there
-    as a directory reference. Multer's memoryStorage configuration ensures
-    it is never written to. You can verify this: after many uploads in a
-    session, the uploads/ folder will still be completely empty.
+    Multer's memoryStorage configuration ensures it is never written to.
   - NOTHING is in any cloud storage (no S3, no Google Cloud Storage, no
     Cloudinary, no database BLOBs). Just RAM.
 
@@ -309,16 +361,31 @@ WHEN A SESSION ENDS:
         }
       }
   - This removes all files belonging to that session from the Map.
+  - Then deleteSessionRecord() is called which removes the session's MongoDB
+    document and all associated SessionBan documents from the database.
   - The Buffer objects (the actual bytes) are then unreachable and are
     garbage collected by the Node.js runtime.
+
+AUTOMATED BACKGROUND CLEANUP (NEW in v3):
+  - initSessionCleanup() is called on server startup.
+  - It runs runCleanup() immediately on startup, then every 10 minutes.
+  - runCleanup() does two things:
+      1. Calls cleanupExpiredSessions() — queries MongoDB for sessions with
+         status 'DESTROYED' or expiresAt < now and deletes their records.
+      2. Iterates the ephemeralFiles Map and deletes any file whose owning
+         session no longer exists in RAM or has been destroyed, OR any file
+         older than 2 hours (MAX_FILE_AGE_MS). This guards against orphaned
+         files if session destruction was abnormal.
 
 IS THE DELETION REALLY COMPLETE?
 
   WHAT IS DEFINITIVELY TRUE:
   - No file was ever on disk. Zero bytes were written to any filesystem.
+  - No file was ever in MongoDB. Zero file data was ever written to the DB.
   - Files are removed from the ephemeralFiles Map at session end.
   - After GC, the bytes are physically gone from RAM.
   - No cloud storage account was ever involved.
+  - The MongoDB session document is also deleted on session destruction.
 
   WHAT LINGERS BRIEFLY (not a practical security concern for most uses):
   - GC timing: The Buffer bytes remain physically in RAM until Node.js GC
@@ -340,7 +407,7 @@ WHAT HAPPENS TO A FILE IF SOMEONE VIEWS IT MULTIPLE TIMES?
 
 
 ================================================================================
-SECTION 7: FILE AND MESSAGE LIMITS — EXACT NUMBERS
+SECTION 8: FILE AND MESSAGE LIMITS — EXACT NUMBERS
 ================================================================================
 
 TEXT MESSAGES:
@@ -381,7 +448,7 @@ SUMMARY TABLE:
 
 
 ================================================================================
-SECTION 8: HOW DO PARTICIPANTS JOIN? THE INVITE LINK MECHANISM
+SECTION 9: HOW DO PARTICIPANTS JOIN? THE INVITE LINK MECHANISM
 ================================================================================
 
 There are two ways to join a session:
@@ -412,17 +479,39 @@ SECURITY NOTE ON THE INVITE LINK:
   - There is a "TEST IN TAB" button that opens the invite URL in a new tab
     in the same browser, useful for developers testing two participants.
 
-HOW SESSION IDs AND PASSKEYS ARE GENERATED:
+HOW SESSION IDs AND PASSKEYS ARE GENERATED (generateSessionId.js, generatePasskey.js):
   - Session ID: 6 characters from a custom alphabet (no ambiguous chars like
     0/O, 1/I) using crypto.randomBytes(6). Example: "AB3K7M"
-  - Passkey: A random word from a list of 21 words + a random 3-digit number,
-    using crypto.randomInt(). Example: "TITAN-482" or "QUANTUM-157"
+    Chars pool: '23456789ABCDEFGHJKLMNPQRSTUVWXYZ' (32 chars, no ambiguous ones)
+  - Passkey: A random word from a list of 21 words + a random 3-digit number
+    (100-998), using crypto.randomInt(). Example: "TITAN-482" or "QUANTUM-157"
+    Words: ALPHA, BRAVO, COBALT, DELTA, ECHO, FALCON, GHOST, HAVEN, IRON,
+           JADE, KRYPTO, LUNAR, NEO, ORION, PRISM, QUANTUM, RAVEN, SOLAR,
+           TITAN, VORTEX, ZENITH
   - Both use Node.js's crypto module which produces cryptographically secure
     random output (not Math.random()).
 
+HOW THE PASSKEY IS STORED (NEW in v3 — bcrypt hashing):
+  - The raw passkey is NEVER stored in the database.
+  - When a session is created, hashPasskey() in authenticationService.js runs:
+      bcrypt.hash(passkey.trim().toUpperCase(), 10)
+  - Only the bcrypt hash is saved to the Session MongoDB document (passkeyHash).
+  - When a joiner submits a passkey, verifyPasskey() runs:
+      bcrypt.compare(candidatePasskey.trim().toUpperCase(), passkeyHash)
+  - This means even if the MongoDB database were compromised, an attacker
+    cannot retrieve the original passkeys — only bcrypt hashes.
+
+SESSION ID COLLISION PREVENTION (NEW in v3):
+  - Before using a generated sessionId, the server checks BOTH the RAM Map
+    AND the MongoDB Session collection for collisions:
+      while ((await isSessionIdTaken(sessionId)) || sessions.has(sessionId))
+  - isSessionIdTaken() queries MongoDB for the ID.
+  - This prevents two concurrent sessions from getting the same ID even across
+    server restarts (since old IDs may still exist in the DB).
+
 
 ================================================================================
-SECTION 9: THE FULL SESSION LIFECYCLE — EVERY STATE
+SECTION 10: THE FULL SESSION LIFECYCLE — EVERY STATE
 ================================================================================
 
 The app has 7 UI states (uiState in App.jsx):
@@ -440,46 +529,62 @@ The EndingCountdownModal appears on top of the active chat while uiState is
 still 'ACTIVE'. The session-ending socket event sets endingData in React state,
 which triggers the overlay to appear.
 
-CREATION FLOW:
+CREATION FLOW (v3 — with DB):
   - Owner enters username (max 32 chars).
   - Browser emits 'create-session' Socket.IO event with username.
-  - Server generates sessionId and passkey using crypto.
-  - Server creates the session object in the sessions Map:
+  - Server generates sessionId using generateSessionId() and checks for
+    collision against both MongoDB and RAM (loop until unique).
+  - Server generates passkey using generatePasskey() and hashes it with bcrypt.
+  - Server calls createSessionRecord() which writes to MongoDB:
+      { sessionId, ownerParticipantId, passkeyHash, status: 'ACTIVE',
+        createdAt, expiresAt: null, endingReason: null }
+  - Server then initializes the RAM session object:
       {
         sessionId,
-        passkey,
         ownerParticipantId,
-        ownerSocketId,
+        ownerSocketId: socket.id,
         participants: new Map(),
         bannedParticipantIds: new Set(),
         status: 'ACTIVE',
         createdAt: Date.now(),
         destroyAt: null,
-        ...
+        endingReason: null,
+        warningDurationMs: 5000,
+        countdownDurationMs: 10000,
+        destroyTimeoutId: null,
       }
   - Owner's socket joins the Socket.IO room (named "ephemeral_session_{id}").
-  - Server responds with the session credentials.
+  - Server responds with the session credentials (including the plain passkey
+    for display — it is never stored plain, but returned to the owner once).
   - uiState switches to 'ACTIVE'.
 
-JOIN FLOW:
+JOIN FLOW (v3 — with DB):
   - Joiner provides sessionId, passkey, username.
-  - Server validates all of the following in order:
-    a) Does the session exist?
-    b) Is the session status 'ACTIVE'?
-    c) Does the passkey match?
-    d) Is this participant banned?
-  - If all pass: participant is added, their socket joins the room.
-  - ALL other participants get a 'participant-joined' event with the updated list.
-  - A system message "username joined the session." appears in every browser.
-  - A join sound plays (playUserJoinedSound).
+  - Server performs these authoritative validations in order:
+    a) findSessionRecord(sessionId) — looks in MongoDB first, fallback to RAM.
+       If no record → SESSION_NOT_FOUND.
+    b) dbRecord.status !== 'ACTIVE' → SESSION_ENDING error.
+    c) verifyPasskey(reqPasskey, dbRecord.passkeyHash) — bcrypt comparison.
+       If mismatch → INVALID_PASSKEY error.
+    d) isParticipantBanned(sessionId, existingParticipantId) — checks MongoDB
+       SessionBan collection (and RAM fallback).
+       If banned → PARTICIPANT_BANNED error.
+  - If all pass:
+    e) If the RAM session doesn't exist yet (e.g., after a server restart),
+       the server reconstructs a RAM session object from the DB record.
+    f) Participant is added to RAM session.participants Map.
+    g) Socket joins the room.
+    h) ALL other participants get a 'participant-joined' event.
+    i) A system message "username joined the session." appears in every browser.
+    j) A join sound plays (playUserJoinedSound).
 
 DURING A SESSION:
-  - Text messages: relayed instantly, no storage.
-  - File uploads: stored in RAM, metadata broadcast via socket.
+  - Text messages: relayed instantly, no storage (RAM or DB).
+  - File uploads: stored in RAM ephemeralFiles Map, NOT in DB.
+    Metadata broadcast via socket.
   - Typing indicators: a 'typing' event is emitted when user types.
-    The typing indicator disappears after 2.5 seconds of no typing
-    (typingMapRef setTimeout in App.jsx). Server relays these but does
-    not store them.
+    The typing indicator disappears after 2.5 seconds of no typing.
+    Server relays these but does not store them.
   - Participant list is maintained in the session.participants Map on the server.
     Every browser has a copy of this list in its activeSession React state.
 
@@ -488,32 +593,36 @@ TERMINATION TRIGGERS:
   - Owner's browser tab is closed / internet drops.
   - Owner voluntarily sends 'leave-session' event.
 
-TERMINATION SEQUENCE:
-  initiateSessionDestruction() is called:
-  1. session.status = 'ENDING'
+TERMINATION SEQUENCE (v3 — with DB):
+  initiateSessionDestruction() is called (async):
+  1. session.status = 'ENDING' (RAM)
   2. session.destroyAt = Date.now() + 15000 (15 seconds from now)
-  3. 'session-ending' event is broadcast to all in the room. Contains:
+  3. await updateSessionStatus(normId, 'ENDING', reason) — writes to MongoDB.
+  4. 'session-ending' event is broadcast to all in the room. Contains:
        - reason (OWNER_LEFT or OWNER_ENDED)
        - destroyAt timestamp
        - warningDurationMs: 5000 (5 seconds)
        - countdownDurationMs: 10000 (10 seconds)
        - totalDurationMs: 15000
-  4. EndingCountdownModal appears on all browsers simultaneously.
+  5. EndingCountdownModal appears on all browsers simultaneously.
      It shows a live countdown updating every 50ms.
      A tick sound plays each second, urgent for the last 5 seconds.
      Phase 1 (first 5s): "SESSION IS CLOSING" warning phase.
      Phase 2 (next 10s): "PURGING EPHEMERAL RAM" countdown phase.
-  5. A setTimeout on the server fires after 15 seconds:
-       executeHardDestruction(sessionId)
-  6. executeHardDestruction():
-     a) session.status = 'DESTROYED'
-     b) Broadcasts 'session-destroyed' to all sockets in the room.
-     c) All sockets leave the room (socket.leave(room)).
-     d) socketToParticipant entries are deleted for each socket.
-     e) session.participants.clear() — all participant records wiped.
-     f) session.bannedParticipantIds.clear() — ban list wiped.
-     g) sessions.delete(sessionId) — session removed from the Map entirely.
-     h) ephemeralFiles loop: all files belonging to this session are deleted.
+  6. A setTimeout on the server fires after 15 seconds:
+       await executeHardDestruction(normId)
+
+  executeHardDestruction() (async):
+  a) Broadcasts 'session-destroyed' to all sockets in the room.
+  b) All sockets leave the room (socket.leave(room)).
+  c) socketToParticipant entries are deleted for each socket.
+  d) session.participants.clear() — all participant records wiped from RAM.
+  e) session.bannedParticipantIds.clear() — RAM ban set wiped.
+  f) sessions.delete(normId) — session removed from RAM Map entirely.
+  g) ephemeralFiles loop: all files belonging to this session are deleted from RAM.
+  h) await deleteSessionRecord(normId) — DELETES the Session document AND all
+     SessionBan documents for this session from MongoDB.
+
   7. Each browser receives 'session-destroyed':
      a) setMessages([]) — clears all messages from React state.
      b) setActiveSession(null) — clears session identity.
@@ -522,7 +631,7 @@ TERMINATION SEQUENCE:
 
 WHAT HAPPENS WHEN A NON-OWNER PARTICIPANT LEAVES:
   - They send 'leave-session' event.
-  - Server removes them from session.participants.
+  - Server removes them from session.participants (RAM only).
   - Their socket leaves the Socket.IO room.
   - All remaining participants get 'participant-left' event.
   - A system message "username left the session voluntarily." shows.
@@ -540,7 +649,7 @@ WHAT HAPPENS WHEN THE OWNER CLOSES THE BROWSER TAB:
 WHAT HAPPENS IF A NON-OWNER CLOSES THEIR TAB:
   - Same disconnect event fires.
   - Server checks: not the owner.
-  - Simply removes them from participants.
+  - Simply removes them from RAM participants Map.
   - 'participant-left' event is broadcast.
   - Session continues for everyone else.
 
@@ -552,7 +661,7 @@ WHAT HAPPENS IF THE OWNER RECONNECTS WITHIN THE 15 SECONDS:
 
 
 ================================================================================
-SECTION 10: THE KICK SYSTEM
+SECTION 11: THE KICK SYSTEM (v3 — with DB persistence)
 ================================================================================
 
 The owner can kick any participant from the session.
@@ -564,29 +673,38 @@ HOW KICKING WORKS:
      session even if they have the link and passkey."
   3. Owner confirms.
   4. Browser emits 'kick-participant' Socket.IO event with targetParticipantId.
-  5. Server validates: requester is the owner.
-  6. Server adds targetParticipantId to session.bannedParticipantIds Set.
-  7. Server disconnects the target's socket from the room.
-  8. Server sends 'participant-kicked-self' event to the kicked user's socket.
-  9. The kicked user's browser receives this and switches uiState to 'KICKED',
-     showing the KickedScreen with the reason message.
-  10. Server removes the kicked participant from session.participants.
-  11. 'participant-kicked' event is broadcast to remaining participants.
-  12. System message: "username was kicked and permanently barred by the owner."
+  5. Server validates: requester is the owner (RAM check).
+  6. Server adds targetParticipantId to session.bannedParticipantIds Set (RAM).
+  7. Server calls await addSessionBan(normId, targetParticipantId):
+     - Writes a SessionBan document to MongoDB:
+         { sessionId, participantId, bannedAt }
+     - The ban is also stored in RAM inMemorySessionBans as a fallback Set key.
+  8. Server disconnects the target's socket from the room.
+  9. Server sends 'participant-kicked-self' event to the kicked user's socket.
+  10. The kicked user's browser receives this and switches uiState to 'KICKED',
+      showing the KickedScreen with the reason message.
+  11. Server removes the kicked participant from session.participants (RAM).
+  12. 'participant-kicked' event is broadcast to remaining participants.
+  13. System message: "username was kicked and permanently barred by the owner."
 
-CAN A KICKED PARTICIPANT REJOIN?
-  - If they try to rejoin using the same participantId (stored in browser or
-    session), the server will reject them:
-      session.bannedParticipantIds.has(existingParticipantId) → return error
+CAN A KICKED PARTICIPANT REJOIN? (v3 behaviour):
+  - The ban is now DOUBLY persisted: in MongoDB SessionBan collection AND in
+    RAM bannedParticipantIds Set.
+  - If they try to rejoin with the same participantId:
+    * isParticipantBanned() first checks MongoDB → finds the ban → REJECTED.
+    * Even if the RAM session is gone (e.g., after restart), the MongoDB ban
+      still exists until the session is destroyed.
   - If they open an entirely fresh browser (new tab, incognito, different
-    device), they would get a NEW participantId, which is NOT in the ban list.
+    device), they get a NEW participantId, which is NOT in the ban.
     In that case, they could potentially rejoin with the same ID and passkey.
   - The ban is per-participantId, not per-IP or per-username. This is a
     known limitation — there is no IP-based ban.
+  - The ban is cleaned up when the session is destroyed (deleteSessionRecord
+    also calls SessionBan.deleteMany for that session).
 
 
 ================================================================================
-SECTION 11: HOW THE PDF AND IMAGE VIEWERS WORK (CLIENT SIDE)
+SECTION 12: HOW THE PDF AND IMAGE VIEWERS WORK (CLIENT SIDE)
 ================================================================================
 
 IMAGE VIEWER (ImageLightboxModal.jsx):
@@ -629,7 +747,7 @@ IMPORTANT NOTE ABOUT FILE VIEWING AFTER SESSION ENDS:
 
 
 ================================================================================
-SECTION 12: THE SOUND EFFECTS SYSTEM
+SECTION 13: THE SOUND EFFECTS SYSTEM
 ================================================================================
 
 The app has 8 different sound effects. ALL sounds are SYNTHESIZED in real time
@@ -673,7 +791,7 @@ zero server RAM, zero bandwidth (except the JavaScript code itself on first load
 
 
 ================================================================================
-SECTION 13: LOAD CAPACITY — HOW MUCH CAN THIS PROJECT HANDLE?
+SECTION 14: LOAD CAPACITY — HOW MUCH CAN THIS PROJECT HANDLE?
 ================================================================================
 
 WHAT CONSUMES RESOURCES ON THE SERVER:
@@ -689,12 +807,22 @@ WHAT CONSUMES RESOURCES ON THE SERVER:
   - Message relay is near-zero CPU. No processing, just broadcasting.
   - File upload parsing via multer: brief CPU spike during upload.
   - No image processing, no compression, no rendering.
+  - bcrypt hashing on session creation: ~100ms per create (intentionally slow
+    for security). This is insignificant at low session-creation rates.
 
   NETWORK BANDWIDTH:
   - Text messages: tiny (~1 KB per message including JSON overhead).
   - File uploads: determined by file size. A 10 MB image costs 10 MB of upload
     bandwidth when sent, and 10 MB download bandwidth for each person who views it.
     If 10 people view the same 10 MB image, that is 100 MB of download bandwidth.
+
+  MONGODB (very low impact):
+  - Session creation: 1 write.
+  - Each join: 1-2 reads (findSessionRecord + isParticipantBanned).
+  - Each kick: 1 write (SessionBan upsert).
+  - Session destruction: 2 deletes (Session + SessionBan.deleteMany).
+  - Periodic cleanup: 1 query every 10 minutes.
+  - Total DB operations are minimal — MongoDB is not in the hot path of messaging.
 
 RENDER.COM FREE PLAN:
   - 512 MB RAM
@@ -738,17 +866,23 @@ WHAT HAPPENS ON RAM EXHAUSTION:
     are permanently gone from RAM.
   - All users are disconnected.
   - Each user's browser will attempt to reconnect (up to 10 retries, 1 second
-    apart). But the session no longer exists, so reconnection will not restore
-    the session state.
+    apart). The MongoDB records for the sessions still exist, but the RAM state
+    is gone. A reconnecting user can attempt to rejoin via 'join-session' and
+    the server will reconstruct a RAM session from the DB record if status is
+    still ACTIVE.
 
 KNOWN SCALABILITY CEILING:
   - The app cannot scale horizontally (run multiple copies) because the sessions
     Map is local to one Node.js process. If two server instances run behind a
-    load balancer, a user on Server A cannot join a session created on Server B.
+    load balancer, a user on Server A cannot join a session created on Server B
+    (their RAM sessions Map is different).
+  - MongoDB helps with metadata validation across restarts but NOT across
+    concurrent instances. Both instances would have different RAM Maps.
   - Fixing this requires:
-    1. Adding a Redis instance as a shared session store.
-    2. Using Socket.IO's Redis adapter for cross-server broadcasting.
-    3. Storing ephemeralFiles in Redis or a shared memory store.
+    1. Using Socket.IO's Redis adapter for cross-server broadcasting.
+    2. Storing ephemeralFiles in Redis or a shared memory store.
+    3. The current MongoDB layer handles metadata, but live socket routing
+       still needs Redis.
   - None of this is in the current codebase.
 
 NO RATE LIMITING:
@@ -756,14 +890,14 @@ NO RATE LIMITING:
   - A malicious user could:
     * Flood the server with thousands of 'send-message' events per second.
     * Upload hundreds of 25 MB PDFs in rapid succession, filling RAM.
-    * Attempt to brute-force passkeys (though the 6-char alphanumeric session
-      ID + word-number passkey combination space is large enough to be impractical).
+    * Attempt to brute-force passkeys (though bcrypt hashing now makes each
+      verification ~100ms, making brute-forcing much slower).
   - Adding rate limiting (e.g., express-rate-limit for HTTP, socket.io middleware
     for WebSocket) would significantly improve resilience.
 
 
 ================================================================================
-SECTION 14: WHAT THE uploads/ FOLDER IS
+SECTION 15: WHAT THE uploads/ FOLDER IS
 ================================================================================
 
 The uploads/ directory exists in the project root. It is ALWAYS EMPTY.
@@ -786,15 +920,123 @@ files would be written there — but in the current configuration, they are not.
 
 
 ================================================================================
-SECTION 15: SECURITY — WHAT IS PROTECTED AND WHAT IS NOT
+SECTION 16: THE NEW SERVER MODULE STRUCTURE (v3)
 ================================================================================
 
-WHAT IS GENUINELY SECURE:
-  - Zero persistent storage: No database means no SQL injection risk, no data
-    breaches from a database being stolen.
+The new codebase is split into a proper server-side module tree under src/server/:
+
+  src/
+  └── server/
+      ├── config/
+      │   └── database.js          — MongoDB connection (connectDatabase, isDatabaseConnected,
+      │                              getConnectionStatus). Uses mongoose. Gracefully handles
+      │                              missing MONGODB_URI with a console warning (no crash).
+      │
+      ├── models/
+      │   ├── Session.js           — Mongoose schema for session metadata.
+      │   │                          Fields: sessionId, ownerParticipantId, passkeyHash,
+      │   │                          status, createdAt, expiresAt, endingReason.
+      │   │                          Index on sessionId (unique).
+      │   └── SessionBan.js        — Mongoose schema for participant bans.
+      │                              Fields: sessionId, participantId, bannedAt.
+      │                              Composite unique index on (sessionId, participantId).
+      │
+      ├── services/
+      │   ├── authenticationService.js  — bcrypt passkey hashing (hashPasskey) and
+      │   │                              verification (verifyPasskey). SALT_ROUNDS = 10.
+      │   │                              Always normalizes to uppercase before hashing/comparing.
+      │   └── sessionService.js         — All CRUD for MongoDB session metadata.
+      │                                  Exports: createSessionRecord, isSessionIdTaken,
+      │                                  findSessionRecord, updateSessionStatus,
+      │                                  deleteSessionRecord, addSessionBan,
+      │                                  isParticipantBanned, cleanupExpiredSessions.
+      │                                  Every function checks isDatabaseConnected() first
+      │                                  and falls back to inMemorySessionMeta / inMemorySessionBans
+      │                                  if DB is unavailable.
+      │
+      └── utils/
+          ├── generateSessionId.js — Generates 6-char session IDs using crypto.randomBytes
+          │                          from a 32-char unambiguous alphabet.
+          ├── generatePasskey.js   — Generates WORD-NNN passkeys using crypto.randomInt
+          │                          from 21 NATO/space-theme words.
+          └── sessionCleanup.js    — Background cleanup: initSessionCleanup() starts a
+                                     setInterval running every 10 minutes.
+                                     runCleanup() deletes destroyed/expired DB sessions
+                                     and orphaned ephemeral files (no owner session or >2h old).
+
+NEW DEPENDENCIES (package.json additions vs v2):
+  - mongoose    ^9.9.4   — MongoDB ODM for schema validation and queries
+  - bcryptjs    ^3.0.3   — bcrypt implementation for passkey hashing
+  - @types/bcryptjs ^3.0.0 — TypeScript types for bcryptjs (dev use)
+
+NEW ENVIRONMENT VARIABLE:
+  - MONGODB_URI  — MongoDB connection string (e.g., from MongoDB Atlas).
+    If not set, the app runs entirely in RAM-only mode (no DB).
+    Example (MongoDB Atlas): mongodb+srv://user:pass@cluster.mongodb.net/plutus
+
+
+================================================================================
+SECTION 17: THE API HEALTH ENDPOINTS (NEW in v3)
+================================================================================
+
+Two diagnostic HTTP endpoints were added:
+
+GET /api/health
+  Returns a JSON snapshot of server health:
+  {
+    status: 'ok',
+    database: {
+      connected: true/false,
+      readyState: 0-3,
+      state: 'connected'/'disconnected'/'connecting'/'disconnecting',
+      host: 'atlas-host.mongodb.net' or null
+    },
+    activeRAMSessionsCount: <number>,  <- sessions currently in RAM
+    dbSessionsCount: <number>,         <- Session documents in MongoDB
+    dbBansCount: <number>,             <- SessionBan documents in MongoDB
+    timestamp: <unix-ms>
+  }
+  If DB is disconnected, dbSessionsCount and dbBansCount are 0.
+
+GET /api/db-status
+  Returns the full content of both MongoDB collections plus the in-RAM session
+  list. Useful for debugging:
+  {
+    status: 'ok',
+    database: { ... },
+    documentsInSessions: [ ... ],     <- Array of Session documents
+    documentsInBans: [ ... ],         <- Array of SessionBan documents
+    inMemoryActiveSessions: [ ... ]   <- Array of sessionIds in RAM Map
+  }
+
+GET /api/session/:sessionId/check
+  Returns the existence and status of a specific session by querying MongoDB:
+  {
+    exists: true/false,
+    status: 'ACTIVE'/'ENDING'/'DESTROYED'/'NOT_FOUND',
+    createdAt: <ISO date>,
+    participantCount: <number>
+  }
+
+
+================================================================================
+SECTION 18: SECURITY — WHAT IS PROTECTED AND WHAT IS NOT
+================================================================================
+
+WHAT IS GENUINELY SECURE (v3 additions highlighted):
+  - Zero persistent message storage: No message content ever touches MongoDB
+    or disk. No data breaches possible from a DB dump for message content.
   - Cryptographic random IDs: Session IDs and participant IDs use Node.js crypto
     module (crypto.randomBytes, crypto.randomUUID, crypto.randomInt) — not
     Math.random(), which is predictable.
+  - PASSKEY HASHING (NEW): Passkeys are now hashed with bcrypt (10 rounds)
+    before being stored in MongoDB. The raw passkey is never persisted.
+    Even a full database compromise reveals only bcrypt hashes, not passkeys.
+  - Authoritative DB-backed join validation (NEW): Session existence and status
+    are now verified against MongoDB, not just RAM. A session that was ENDING
+    or DESTROYED in the DB cannot accept new joiners even if RAM was reset.
+  - DB-backed ban persistence (NEW): Participant bans are written to MongoDB
+    and survive server restarts, making kick enforcement durable.
   - File access control: To fetch a file, you need both a valid sessionId AND
     a valid participantId from the same session. You cannot access files from
     another session even if you know the fileId.
@@ -802,6 +1044,8 @@ WHAT IS GENUINELY SECURE:
     in one session cannot see or interact with participants in another.
   - Owner-only administration: Only the session creator can kick participants
     or end the session.
+  - Automatic DB cleanup: Destroyed sessions are cleaned from MongoDB every 10
+    minutes, minimizing the attack surface of stale session records.
 
 WHAT IS NOT SECURE / MISSING:
 
@@ -816,8 +1060,9 @@ WHAT IS NOT SECURE / MISSING:
      This is not implemented.
 
   2. NO RATE LIMITING:
-     As described in Section 13, there is no protection against message floods,
-     file upload spam, or passkey brute-forcing.
+     As described in Section 14, there is no protection against message floods,
+     file upload spam, or passkey brute-forcing. bcrypt slows down individual
+     passkey checks but doesn't limit the number of attempts.
 
   3. CORS IS SET TO WILDCARD (*):
      The Socket.IO server allows connections from any origin:
@@ -827,7 +1072,8 @@ WHAT IS NOT SECURE / MISSING:
   4. PASSKEY IN INVITE LINKS:
      The invite URL contains the passkey as a query parameter. If this link
      is shared, logged by a browser history, or intercepted in an HTTP log,
-     the passkey is exposed.
+     the passkey is exposed. (bcrypt hashing of the DB copy doesn't help here —
+     the link itself still contains the plain passkey.)
 
   5. NO USER AUTHENTICATION:
      Anyone who knows the Session ID and passkey can join. There is no account
@@ -836,9 +1082,10 @@ WHAT IS NOT SECURE / MISSING:
      username in the same session.
 
   6. KICKED USER CAN REJOIN WITH NEW IDENTITY:
-     As described in Section 10, the ban is based on participantId. Using a
+     As described in Section 11, the ban is based on participantId. Using a
      different browser or clearing local state creates a new participantId,
-     bypassing the ban.
+     bypassing the ban. The ban is now persisted in MongoDB but still keyed
+     by participantId, not IP or fingerprint.
 
   7. NO HTTPS ENFORCEMENT IN CODE:
      The Express app itself does not redirect HTTP to HTTPS. It relies on the
@@ -849,14 +1096,20 @@ WHAT IS NOT SECURE / MISSING:
      There is no filtering or scanning of message content or uploaded files.
      Any file passing the MIME type and size checks is accepted and served.
 
+  9. /api/db-status IS UNAUTHENTICATED:
+     This endpoint returns the full contents of both MongoDB collections —
+     including all session IDs and ban records — to anyone who requests it.
+     In production, this should be protected by an admin secret or removed.
+
 
 ================================================================================
-SECTION 16: COMPLETE QUICK-REFERENCE Q&A
+SECTION 19: COMPLETE QUICK-REFERENCE Q&A
 ================================================================================
 
 Q: Can this be deployed on Vercel?
-A: No. Vercel is serverless. Socket.IO and in-memory state both require a
-   persistent Node.js process. Use Render.com (already configured via render.yaml).
+A: No. Vercel is serverless. Socket.IO, in-memory state, AND the persistent
+   MongoDB connection all require a continuously running Node.js process.
+   Use Render.com (already configured via render.yaml).
 
 Q: Who is the server?
 A: Render.com's cloud virtual machine. No user's personal device is the server.
@@ -864,6 +1117,7 @@ A: Render.com's cloud virtual machine. No user's personal device is the server.
 Q: What happens to messages?
 A: Relayed through server RAM for microseconds, then gone from the server.
    Displayed in each browser's React state until session ends or page refresh.
+   Messages are NEVER written to MongoDB.
 
 Q: Are chats stored anywhere?
 A: No. No database. No files. No logs of message content.
@@ -873,11 +1127,11 @@ A: From the server — yes, they were never there to begin with. From browsers �
    yes, React state is cleared when the 'session-destroyed' event arrives.
 
 Q: Where do images and PDFs go?
-A: Server RAM only (multer memoryStorage). Never written to disk.
+A: Server RAM only (multer memoryStorage). Never written to disk or MongoDB.
    The uploads/ folder is empty and unused.
 
 Q: Are files really deleted on session end?
-A: Yes. The ephemeralFiles Map entry is deleted. No disk copy exists.
+A: Yes. The ephemeralFiles Map entry is deleted. No disk or DB copy exists.
    GC reclaims the RAM bytes within seconds.
 
 Q: Can someone access a file after the session ends?
@@ -908,16 +1162,20 @@ Q: How many sessions can exist at once?
 A: No hard cap. Limited by available RAM.
 
 Q: What happens if the server runs out of RAM?
-A: Node.js crashes. Render auto-restarts. All sessions and files are instantly
-   and permanently lost. All users are disconnected.
+A: Node.js crashes. Render auto-restarts. All RAM state (sessions and files)
+   is instantly lost. Users are disconnected. However, MongoDB session records
+   (metadata) survive. Reconnecting users can attempt to rejoin via 'join-session'
+   and the server will try to reconstruct RAM state from the DB record if status
+   is still ACTIVE.
 
 Q: Can two server instances run at once?
-A: No. The sessions Map is local. Adding a second server would break sessions.
-   Redis would be needed to share state across servers.
+A: The MongoDB layer helps with metadata, but the socket rooms and RAM sessions
+   Map are still local per process. True horizontal scaling needs Redis for
+   socket adapter and shared memory. This is not in the current codebase.
 
 Q: What happens if the owner closes their browser tab?
-A: The server detects the disconnect. It starts a 15-second countdown and then
-   destroys the entire session for all participants.
+A: The server detects the disconnect. It starts a 15-second countdown, writes
+   ENDING to MongoDB, and then destroys the entire session for all participants.
 
 Q: Can the countdown be stopped once started?
 A: No. Once initiateSessionDestruction() is called, the setTimeout will always
@@ -926,9 +1184,10 @@ A: No. Once initiateSessionDestruction() is called, the setTimeout will always
 Q: What happens if I refresh the page during an active session?
 A: You lose your browser React state (all messages you had received are gone
    from your view). Your old socket ID also changes. However, the server still
-   has your participantId stored. If you had the Session ID and passkey saved,
-   you can rejoin and will be recognized as the same participant (or as a new
-   one if no participantId is provided). Message history will NOT be replayed.
+   has your participantId stored in RAM. You can rejoin via 'join-session' with
+   your stored participantId — the server will now validate against MongoDB
+   (bcrypt passkey check + ban check) and re-add you. Message history will NOT
+   be replayed.
 
 Q: Does the socket reconnect automatically?
 A: Yes. The socket.js client is configured with reconnection: true, up to 10
@@ -947,9 +1206,10 @@ Q: Is there rate limiting?
 A: No. A malicious user can spam messages or large file uploads.
 
 Q: Can a kicked user come back?
-A: If they try with the same browser/participantId, no — they are banned.
+A: The ban is now written to MongoDB (persists across restarts). If they try
+   with the same participantId, they are rejected even after a server restart.
    If they use a fresh browser with no stored participantId, yes, they can
-   rejoin because the ban is by participantId, not by IP or username.
+   rejoin because the ban is by participantId, not IP or username.
 
 Q: Can regular participants end the session?
 A: No. Only the session owner/creator can end the session or trigger destruction
@@ -958,13 +1218,32 @@ A: No. Only the session owner/creator can end the session or trigger destruction
 Q: What does "STORAGE MODE: LOCAL DISK + RAM" in the sidebar mean?
 A: That label in the UI is INACCURATE. Looking at the actual code, multer uses
    memoryStorage only — there is no disk storage for files. This appears to be
-   a misleading label in the sidebar footer. Everything is RAM-only.
+   a misleading label in the sidebar footer. File data is RAM-only.
+   There is now also a MongoDB layer for session METADATA, but not for files.
 
 Q: What is the uploads/ folder for?
 A: Nothing. It is unused and always empty. The code never writes to it.
 
+Q: Is the passkey stored in the database?
+A: Only the bcrypt hash is stored. The raw passkey is never persisted.
+
+Q: What MongoDB collections are used?
+A: Two: 'sessions' (session metadata + passkey hash) and 'sessionbans' (bans).
+
+Q: What happens if MongoDB is unavailable?
+A: The app falls back to in-memory Maps for session metadata and a Set for bans.
+   All functionality works, but bans and session metadata won't survive restarts.
+
+Q: Are there any new diagnostic endpoints?
+A: Yes. GET /api/health, GET /api/db-status, GET /api/session/:id/check.
+   See Section 17 for details.
+
 ================================================================================
-  END OF DOCUMENT — v2 COMPLETE ANALYSIS
+  END OF DOCUMENT — v3 COMPLETE ANALYSIS
   Analysed: 2026-08-30
-  Based on: Full reading of all 20 source files in the project
+  Based on: Full reading of all 28 source files in the project
+  Updated from v2: Reflects Phase 2 DB layer (MongoDB + bcrypt), new module
+  structure under src/server/, new env vars, new API endpoints, updated
+  session lifecycle with DB writes, updated kick/ban persistence, and
+  updated security analysis.
 ================================================================================
