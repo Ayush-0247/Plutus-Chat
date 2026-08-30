@@ -22,7 +22,138 @@
 
 ## 1. Architecture Overview
 
-```
+```# PRODUCT REQUIREMENT DOCUMENT (PRD)
+
+## 1. Executive Summary & Vision
+* **Product Name:** Pulse Chat (Instant Messaging Platform)
+* **Goal:** Build a high-performance, real-time messaging application with a 100% human-centric instant messenger (IM) interface (comparable to WhatsApp, Telegram, and iMessage), strictly omitting generative AI UI paradigms.
+* **Target Platforms:** Web (Desktop/Mobile Web Responsive), iOS, Android.
+* **Core Philosophy:** Low-latency, direct communication, intuitive status feedback (presence, typing, read receipts), and clear spatial distinction between incoming and outgoing messages.
+
+---
+
+## 2. UI/UX Paradigm & Layout Rules
+
+### Strict Anti-Patterns (Excluded Elements)
+* No centered, full-width single-column conversational views.
+* No alternating assistant/system avatar badges on content rows.
+* No markdown rendering containers with inline "Copy Code" action blocks.
+* No typewriter token streaming effects or "Stop Generating" buttons.
+* No thumbs-up/down ratings, regeneration buttons, or source citation chips.
+* No floating prompt textbars labeled with "Ask anything..." prompts.
+
+### Instant Messenger UI Layout Specifications
+* **Desktop Structure:** 
+  * Left Sidebar (30–35% width): User profile header, global search bar, pinned chats, and scrollable conversation list sorted by `last_message_at`.
+  * Right Chat Area (65–70% width): Fixed header (avatar, contact name, online/typing status, action menu), vertically scrolling message stream, and bottom-anchored input bar.
+* **Mobile Structure:** Dedicated tabbed home screen (Chats, Calls, Settings) transitioning into a full-screen chat view with a top navigation bar and bottom input dock.
+* **Message Alignment:**
+  * **Incoming:** Left-aligned, light/neutral background (e.g., `#F3F4F6`), subtle border or tail pointing left.
+  * **Outgoing:** Right-aligned, primary/accent background (e.g., `#2563EB` or `#00A884`), text color with high contrast, tail pointing right.
+* **Metadata Placement:** Small, muted timestamp and delivery receipt icons positioned inside or immediately adjacent to the lower right corner of each bubble.
+
+---
+
+## 3. Core Functional Requirements
+
+### 3.1. Authentication & User Profile
+* **Auth Methods:** Passwordless OTP via SMS/Email or OAuth 2.0 (Google, Apple).
+* **Profile Fields:**
+  * Unique handle (`@username`) and Display Name.
+  * Profile avatar with client-side cropping.
+  * Freeform status line (e.g., "Available", "Busy", "In a meeting").
+* **Contact Discovery:** Contact list sync (mobile) or handle search query (web).
+
+### 3.2. Real-Time Chat Engine & Message Lifecycle
+* **Delivery States:**
+  1. `PENDING`: Optimistic local rendering with clock icon.
+  2. `SENT`: Single grey checkmark (acknowledged by server).
+  3. `DELIVERED`: Double grey checkmarks (pushed to recipient device).
+  4. `READ`: Double blue checkmarks (recipient entered viewport/opened chat).
+* **Presence & Typing Dynamics:**
+  * Client emits `TYPING_START` on keystroke with a 1.5s debounced timeout triggering `TYPING_STOP`.
+  * Real-time online/offline indicators with "Last seen at [time]" timestamps.
+
+### 3.3. Message Interactions
+* **Quoted Replies (Swipe-to-Reply):** Swiping a bubble right (mobile) or clicking "Reply" (web) embeds an inline preview referencing the target message ID, author, and snippet.
+* **Reactions:** Floating emoji palette on long-press/hover (👍, ❤️, 😂, 😮, 😢, 🙏). Displays as an aggregate badge anchored to the lower bubble edge.
+* **Edit & Revoke:**
+  * Edit permitted within 15 minutes of sending; displays `(edited)` label.
+  * Revocation ("Delete for Everyone") replaces message text with *"This message was deleted"*.
+* **Pinned Messages:** Pin up to 5 messages per conversation; renders as a persistent carousel bar directly below the active chat header.
+
+### 3.4. Rich Media & Attachments
+* **Images/Videos:** Client-side image compression, multi-image collage grids (2x2, 3x3), full-screen lightbox viewer.
+* **Audio Voice Notes:** Push-to-talk recording, waveform rendering, playback speed toggles (1x, 1.5x, 2x).
+* **File Documents:** PDF, DOCX, ZIP transfers displaying filename, file size, and direct download CTA.
+
+---
+
+## 4. Technical Architecture & Data Schemas
+
+### High-Level Architecture
+* **Frontend:** React / Next.js (Web), React Native (Mobile), Tailwind CSS, Lucide Icons, Zustand (State Management).
+* **Backend Gateway:** Node.js / Go WebSocket service for bi-directional messaging, backed by Redis Pub/Sub for horizontal scaling across instances.
+* **REST API:** Stateless services for authentication, media uploads (S3 pre-signed URLs), user profiles, and chat metadata.
+
+### 4.1. PostgreSQL Relational Schema (DDL)
+
+```sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username VARCHAR(50) UNIQUE NOT NULL,
+    display_name VARCHAR(100) NOT NULL,
+    phone_number VARCHAR(20) UNIQUE,
+    avatar_url TEXT,
+    status_text VARCHAR(150) DEFAULT 'Hey there! I am using Pulse.',
+    last_seen_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    is_group BOOLEAN DEFAULT FALSE,
+    title VARCHAR(100),
+    avatar_url TEXT,
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE conversation_participants (
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) DEFAULT 'member', -- 'admin', 'member'
+    joined_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_read_message_id UUID,
+    PRIMARY KEY (conversation_id, user_id)
+);
+
+CREATE TABLE messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+    sender_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    reply_to_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+    content_type VARCHAR(20) DEFAULT 'text', -- 'text', 'image', 'video', 'audio', 'file'
+    content TEXT,
+    media_url TEXT,
+    media_metadata JSONB, -- {"size": 1024, "duration": 15, "width": 800, "height": 600}
+    is_edited BOOLEAN DEFAULT FALSE,
+    is_deleted BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE message_reactions (
+    message_id UUID REFERENCES messages(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    emoji VARCHAR(10) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (message_id, user_id, emoji)
+);
+
+CREATE INDEX idx_messages_conversation_created ON messages(conversation_id, created_at DESC);
+CREATE INDEX idx_participants_user ON conversation_participants(user_id);
 Browser (React)                    Render Server (Node.js)             MongoDB Atlas
 ──────────────────                 ───────────────────────             ──────────────
 CreateSessionView  ─── Socket.IO ──► 'create-session' handler ──────► Session.create()
@@ -37,10 +168,10 @@ App.jsx (state)    ◄── Socket.IO ── session-created / join-success
 
 The server holds **two parallel state stores**:
 
-| Store | Technology | Survives Restart? | What it Holds |
-|---|---|---|---|
-| **RAM** | JS `Map` objects | No | Live participants, socket IDs, timers, file buffers |
-| **MongoDB** | Mongoose models | Yes | Session ID, passkey hash, status, bans |
+| Store       | Technology       | Survives Restart? | What it Holds                                       |
+| ----------- | ---------------- | ----------------- | --------------------------------------------------- |
+| **RAM**     | JS `Map` objects | No                | Live participants, socket IDs, timers, file buffers |
+| **MongoDB** | Mongoose models  | Yes               | Session ID, passkey hash, status, bans              |
 
 ---
 
@@ -52,7 +183,7 @@ Before any session action can happen, the browser must have an active Socket.IO 
 // socket.js — singleton
 const SERVER_URL =
   import.meta.env.VITE_SERVER_URL ||
-  (import.meta.env.PROD ? window.location.origin : 'http://localhost:3000');
+  (import.meta.env.PROD ? window.location.origin : "http://localhost:3000");
 
 export function getSocket() {
   if (!socket) {
@@ -80,8 +211,8 @@ export function getSocket() {
 ### Connection tracking in App.jsx
 
 ```js
-socket.on('connect',    () => setIsConnected(true));
-socket.on('disconnect', () => setIsConnected(false));
+socket.on("connect", () => setIsConnected(true));
+socket.on("disconnect", () => setIsConnected(false));
 ```
 
 The `isConnected` boolean is passed to `<Navbar>`, which shows a live green/red indicator dot.
@@ -98,14 +229,14 @@ HOME ──► CREATING ──► (server 'session-created') ──► ACTIVE
                   └─► (server 'join-error')       ──► stays on JOINING (error shown)
 ```
 
-| `uiState` | Component Rendered | How to Enter |
-|---|---|---|
-| `'HOME'` | `<HomeView>` | Default on load, or after reset |
-| `'CREATING'` | `<CreateSessionView>` | Click "Create Session" on Home |
-| `'JOINING'` | `<JoinSessionView>` | Click "Join Session" on Home, or open invite link |
-| `'ACTIVE'` | `<ActiveSessionView>` | Server responds with `session-created` or `join-success` |
-| `'DESTROYED'` | `<DestroyedScreen>` | Server broadcasts `session-destroyed` |
-| `'KICKED'` | `<KickedScreen>` | Server sends `participant-kicked-self` to this socket |
+| `uiState`     | Component Rendered    | How to Enter                                             |
+| ------------- | --------------------- | -------------------------------------------------------- |
+| `'HOME'`      | `<HomeView>`          | Default on load, or after reset                          |
+| `'CREATING'`  | `<CreateSessionView>` | Click "Create Session" on Home                           |
+| `'JOINING'`   | `<JoinSessionView>`   | Click "Join Session" on Home, or open invite link        |
+| `'ACTIVE'`    | `<ActiveSessionView>` | Server responds with `session-created` or `join-success` |
+| `'DESTROYED'` | `<DestroyedScreen>`   | Server broadcasts `session-destroyed`                    |
+| `'KICKED'`    | `<KickedScreen>`      | Server sends `participant-kicked-self` to this socket    |
 
 > **Important:** `'ENDING'` is NOT a separate `uiState` value. During the destruction countdown, `uiState` stays `'ACTIVE'` and `<EndingCountdownModal>` overlays on top, driven by the `endingData` React state variable.
 
@@ -119,14 +250,14 @@ HOME ──► CREATING ──► (server 'session-created') ──► ACTIVE
 
 The create form has only **one field**:
 
-| Field | HTML Element | Max Length | Default if empty |
-|---|---|---|---|
-| Codename / Handle | `<input id="create_username_input">` | 32 chars | `'Session Creator'` |
+| Field             | HTML Element                         | Max Length | Default if empty    |
+| ----------------- | ------------------------------------ | ---------- | ------------------- |
+| Codename / Handle | `<input id="create_username_input">` | 32 chars   | `'Session Creator'` |
 
 ```js
 const handleSubmit = (e) => {
   e.preventDefault();
-  onCreateSession(username.trim() || 'Session Creator');
+  onCreateSession(username.trim() || "Session Creator");
 };
 ```
 
@@ -140,7 +271,7 @@ The submit button reads **"Generating Line..."** and is `disabled` while `isLoad
 const handleCreateSession = (username) => {
   setIsLoading(true);
   const socket = getSocket();
-  socket.emit('create-session', { username });
+  socket.emit("create-session", { username });
 };
 ```
 
@@ -153,7 +284,9 @@ const handleCreateSession = (username) => {
 
 ```js
 // Payload sent from browser:
-{ username: "Ayush" }
+{
+  username: "Ayush";
+}
 ```
 
 The server receives this in `server.js` inside `socket.on('create-session', async (payload, callback))`.
@@ -165,7 +298,7 @@ The server receives this in `server.js` inside `socket.on('create-session', asyn
 **File:** `src/server/utils/generateSessionId.js`
 
 ```js
-const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // 32 chars — no 0/O/1/I ambiguity
+const chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"; // 32 chars — no 0/O/1/I ambiguity
 const bytes = crypto.randomBytes(6);
 for (let i = 0; i < 6; i++) {
   id += chars[bytes[i] % chars.length];
@@ -195,13 +328,31 @@ while ((await isSessionIdTaken(sessionId)) || sessions.has(sessionId)) {
 
 ```js
 const WORDS = [
-  'ALPHA', 'BRAVO', 'COBALT', 'DELTA', 'ECHO', 'FALCON', 'GHOST', 'HAVEN',
-  'IRON', 'JADE', 'KRYPTO', 'LUNAR', 'NEO', 'ORION', 'PRISM', 'QUANTUM',
-  'RAVEN', 'SOLAR', 'TITAN', 'VORTEX', 'ZENITH'  // 21 words total
+  "ALPHA",
+  "BRAVO",
+  "COBALT",
+  "DELTA",
+  "ECHO",
+  "FALCON",
+  "GHOST",
+  "HAVEN",
+  "IRON",
+  "JADE",
+  "KRYPTO",
+  "LUNAR",
+  "NEO",
+  "ORION",
+  "PRISM",
+  "QUANTUM",
+  "RAVEN",
+  "SOLAR",
+  "TITAN",
+  "VORTEX",
+  "ZENITH", // 21 words total
 ];
 const word = WORDS[crypto.randomInt(0, WORDS.length)];
-const num  = crypto.randomInt(100, 999);
-return `${word}-${num}`;  // e.g. "TITAN-482"
+const num = crypto.randomInt(100, 999);
+return `${word}-${num}`; // e.g. "TITAN-482"
 ```
 
 **Entropy:** 21 words × 899 numbers (100–998) = **18,879 unique passkeys**. Combined with the session ID requirement, brute-forcing is impractical.
@@ -213,7 +364,7 @@ const SALT_ROUNDS = 10;
 
 export async function hashPasskey(passkey) {
   const normalized = passkey.trim().toUpperCase();
-  return bcrypt.hash(normalized, SALT_ROUNDS);  // ~100ms by design
+  return bcrypt.hash(normalized, SALT_ROUNDS); // ~100ms by design
 }
 ```
 
@@ -231,9 +382,9 @@ export async function hashPasskey(passkey) {
 ```js
 await createSessionRecord({
   sessionId,
-  ownerParticipantId,  // crypto.randomUUID()
+  ownerParticipantId, // crypto.randomUUID()
   passkeyHash,
-  status: 'ACTIVE',
+  status: "ACTIVE",
 });
 ```
 
@@ -241,13 +392,13 @@ await createSessionRecord({
 
 ```json
 {
-  "sessionId":          "AB3K7M",
+  "sessionId": "AB3K7M",
   "ownerParticipantId": "uuid-v4",
-  "passkeyHash":        "$2b$10$...bcrypt...",
-  "status":             "ACTIVE",
-  "createdAt":          "2026-08-30T...",
-  "expiresAt":          null,
-  "endingReason":       null
+  "passkeyHash": "$2b$10$...bcrypt...",
+  "status": "ACTIVE",
+  "createdAt": "2026-08-30T...",
+  "expiresAt": null,
+  "endingReason": null
 }
 ```
 
@@ -263,32 +414,36 @@ After the DB write, the server creates the **live session object in the `session
 const session = {
   sessionId,
   ownerParticipantId,
-  ownerSocketId:        socket.id,
-  participants:         new Map(),        // participantId -> participant object
-  bannedParticipantIds: new Set(),        // set of banned participantIds
-  status:               'ACTIVE',
-  createdAt:            Date.now(),
-  destroyAt:            null,
-  endingReason:         null,
-  warningDurationMs:    5000,             // 5s warning phase
-  countdownDurationMs:  10000,            // 10s countdown phase
-  destroyTimeoutId:     null,             // setTimeout handle
+  ownerSocketId: socket.id,
+  participants: new Map(), // participantId -> participant object
+  bannedParticipantIds: new Set(), // set of banned participantIds
+  status: "ACTIVE",
+  createdAt: Date.now(),
+  destroyAt: null,
+  endingReason: null,
+  warningDurationMs: 5000, // 5s warning phase
+  countdownDurationMs: 10000, // 10s countdown phase
+  destroyTimeoutId: null, // setTimeout handle
 };
 
 const ownerParticipant = {
   participantId: ownerParticipantId,
-  username,                               // "Ayush"
-  socketId:      socket.id,
-  joinedAt:      Date.now(),
-  isOwner:       true,
+  username, // "Ayush"
+  socketId: socket.id,
+  joinedAt: Date.now(),
+  isOwner: true,
 };
 
 session.participants.set(ownerParticipantId, ownerParticipant);
 sessions.set(sessionId, session);
-socketToParticipant.set(socket.id, { sessionId, participantId: ownerParticipantId });
+socketToParticipant.set(socket.id, {
+  sessionId,
+  participantId: ownerParticipantId,
+});
 ```
 
 After this step, the session exists in **two places**:
+
 - **MongoDB** — persistent metadata (passkey hash, status)
 - **RAM `sessions` Map** — live state (participants, socket IDs, timers)
 
@@ -301,17 +456,17 @@ const room = `ephemeral_session_${sessionId.toUpperCase()}`;
 socket.join(room);
 
 const response = {
-  success:      true,
+  success: true,
   sessionId,
-  passkey,          // ONLY time the plain passkey is ever sent anywhere
+  passkey, // ONLY time the plain passkey is ever sent anywhere
   participantId: ownerParticipantId,
   username,
-  isOwner:       true,
-  participants:  getParticipantsArray(session),
+  isOwner: true,
+  participants: getParticipantsArray(session),
 };
 
-if (typeof callback === 'function') callback(response);
-else socket.emit('session-created', response);
+if (typeof callback === "function") callback(response);
+else socket.emit("session-created", response);
 ```
 
 > **The plain passkey is sent to the owner exactly once** — in this response — so they can display it and share the invite link. After this point, the passkey exists only as a bcrypt hash in MongoDB.
@@ -323,9 +478,9 @@ else socket.emit('session-created', response);
 ```js
 const handleSessionCreated = (data) => {
   setIsLoading(false);
-  setActiveSessionAndRef(data);  // stores response in React state AND a ref
-  setMessages([]);               // start with empty chat
-  setUiState('ACTIVE');          // render <ActiveSessionView>
+  setActiveSessionAndRef(data); // stores response in React state AND a ref
+  setMessages([]); // start with empty chat
+  setUiState("ACTIVE"); // render <ActiveSessionView>
 };
 ```
 
@@ -352,6 +507,7 @@ const handleSessionCreated = (data) => {
 ```
 
 This object is passed as the `sessionData` prop to `<ActiveSessionView>`, which uses it to:
+
 - Display session ID and passkey
 - Build the invite link URL: `?join=AB3K7M&key=TITAN-482`
 - Show/hide owner-only controls (Kick button, End Session button)
@@ -379,13 +535,13 @@ When the recipient opens it, `App.jsx` reads query params on mount:
 ```js
 useEffect(() => {
   const searchParams = new URLSearchParams(window.location.search);
-  const joinId  = searchParams.get('join');
-  const passkey = searchParams.get('key');
+  const joinId = searchParams.get("join");
+  const passkey = searchParams.get("key");
 
   if (joinId) {
     setUrlSessionId(joinId.toUpperCase());
     if (passkey) setUrlPasskey(passkey.toUpperCase());
-    setUiState('JOINING');  // auto-navigate to join form
+    setUiState("JOINING"); // auto-navigate to join form
   }
 }, []);
 ```
@@ -395,7 +551,7 @@ useEffect(() => {
 ```js
 useEffect(() => {
   if (initialSessionId) setSessionId(initialSessionId);
-  if (initialPasskey)   setPasskey(initialPasskey);
+  if (initialPasskey) setPasskey(initialPasskey);
 }, [initialSessionId, initialPasskey]);
 ```
 
@@ -409,11 +565,11 @@ The user only needs to enter their username.
 
 **File:** `src/components/JoinSessionView.jsx`
 
-| Field | Input ID | Required | Max Length | Auto-UPPERCASE |
-|---|---|---|---|---|
-| Session ID | `join_session_id_input` | Yes | 12 | Yes (on change) |
-| Session Passkey | `join_passkey_input` | Yes | 20 | Yes (on change) |
-| Codename / Handle | `join_username_input` | No | 32 | No |
+| Field             | Input ID                | Required | Max Length | Auto-UPPERCASE  |
+| ----------------- | ----------------------- | -------- | ---------- | --------------- |
+| Session ID        | `join_session_id_input` | Yes      | 12         | Yes (on change) |
+| Session Passkey   | `join_passkey_input`    | Yes      | 20         | Yes (on change) |
+| Codename / Handle | `join_username_input`   | No       | 32         | No              |
 
 Submit button is disabled until both required fields have content:
 
@@ -430,7 +586,7 @@ const handleSubmit = (e) => {
   onJoinSession(
     sessionId.trim().toUpperCase(),
     passkey.trim().toUpperCase(),
-    username.trim() || 'Participant'  // fallback if no username
+    username.trim() || "Participant", // fallback if no username
   );
 };
 ```
@@ -444,9 +600,9 @@ Error messages from the server are displayed in a red alert banner inside the fo
 ```js
 const handleJoinSession = (sessionId, passkey, username) => {
   setIsLoading(true);
-  setJoinErrorMessage(null);   // clear previous error
+  setJoinErrorMessage(null); // clear previous error
   const socket = getSocket();
-  socket.emit('join-session', { sessionId, passkey, username });
+  socket.emit("join-session", { sessionId, passkey, username });
 };
 ```
 
@@ -476,13 +632,14 @@ const dbRecord = await findSessionRecord(reqSessionId);
 if (!dbRecord) {
   return callback({
     success: false,
-    code: 'SESSION_NOT_FOUND',
-    message: 'Session does not exist or was destroyed.'
+    code: "SESSION_NOT_FOUND",
+    message: "Session does not exist or was destroyed.",
   });
 }
 ```
 
 `findSessionRecord()` priority:
+
 1. `Session.findOne({ sessionId: normId })` in MongoDB
 2. `inMemorySessionMeta.get(normId)` (fallback if DB is down)
 3. Returns `null` if not found in either
@@ -494,11 +651,11 @@ if (!dbRecord) {
 ### Step 6 — Server Validation #2: Status Check
 
 ```js
-if (dbRecord.status !== 'ACTIVE') {
+if (dbRecord.status !== "ACTIVE") {
   return callback({
     success: false,
-    code: 'SESSION_ENDING',
-    message: 'Session is ending or destroyed and cannot accept new joiners.'
+    code: "SESSION_ENDING",
+    message: "Session is ending or destroyed and cannot accept new joiners.",
   });
 }
 ```
@@ -515,8 +672,8 @@ const isPasskeyValid = await verifyPasskey(reqPasskey, dbRecord.passkeyHash);
 if (!isPasskeyValid) {
   return callback({
     success: false,
-    code: 'INVALID_PASSKEY',
-    message: 'Invalid session passkey. Verification failed.'
+    code: "INVALID_PASSKEY",
+    message: "Invalid session passkey. Verification failed.",
   });
 }
 ```
@@ -526,7 +683,7 @@ if (!isPasskeyValid) {
 export async function verifyPasskey(candidatePasskey, passkeyHash) {
   if (!candidatePasskey || !passkeyHash) return false;
   const normalized = candidatePasskey.trim().toUpperCase();
-  return bcrypt.compare(normalized, passkeyHash);  // ~100ms
+  return bcrypt.compare(normalized, passkeyHash); // ~100ms
 }
 ```
 
@@ -540,12 +697,16 @@ export async function verifyPasskey(candidatePasskey, passkeyHash) {
 
 ```js
 if (existingParticipantId) {
-  const isBanned = await isParticipantBanned(reqSessionId, existingParticipantId);
+  const isBanned = await isParticipantBanned(
+    reqSessionId,
+    existingParticipantId,
+  );
   if (isBanned) {
     return callback({
       success: false,
-      code: 'PARTICIPANT_BANNED',
-      message: 'You have been removed by the owner and are banned from this session.'
+      code: "PARTICIPANT_BANNED",
+      message:
+        "You have been removed by the owner and are banned from this session.",
     });
   }
 }
@@ -554,6 +715,7 @@ if (existingParticipantId) {
 This only runs if the joiner provides an `existingParticipantId` (a rejoin attempt).
 
 `isParticipantBanned()`:
+
 1. `SessionBan.exists({ sessionId, participantId })` in MongoDB
 2. Falls back to `inMemorySessionBans.has(...)` if DB is down
 
@@ -571,24 +733,25 @@ let session = sessions.get(reqSessionId);
 if (!session) {
   // Reconstruct from DB record
   session = {
-    sessionId:            reqSessionId,
-    ownerParticipantId:   dbRecord.ownerParticipantId,
-    ownerSocketId:        null,           // owner hasn't reconnected yet
-    participants:         new Map(),
+    sessionId: reqSessionId,
+    ownerParticipantId: dbRecord.ownerParticipantId,
+    ownerSocketId: null, // owner hasn't reconnected yet
+    participants: new Map(),
     bannedParticipantIds: new Set(),
-    status:               dbRecord.status,
-    createdAt:            new Date(dbRecord.createdAt).getTime(),
-    destroyAt:            null,
-    endingReason:         null,
-    warningDurationMs:    5000,
-    countdownDurationMs:  10000,
-    destroyTimeoutId:     null,
+    status: dbRecord.status,
+    createdAt: new Date(dbRecord.createdAt).getTime(),
+    destroyAt: null,
+    endingReason: null,
+    warningDurationMs: 5000,
+    countdownDurationMs: 10000,
+    destroyTimeoutId: null,
   };
   sessions.set(reqSessionId, session);
 }
 ```
 
 After reconstruction:
+
 - Bans from MongoDB are still enforced (checked on each join)
 - Message history is NOT restored (was never stored)
 - File buffers are NOT restored (were in RAM, now gone)
@@ -599,13 +762,13 @@ After reconstruction:
 
 ```js
 const participantId = existingParticipantId || crypto.randomUUID();
-const isOwner       = participantId === dbRecord.ownerParticipantId;
+const isOwner = participantId === dbRecord.ownerParticipantId;
 
 const participant = {
   participantId,
-  username:  reqUsername,
-  socketId:  socket.id,
-  joinedAt:  Date.now(),
+  username: reqUsername,
+  socketId: socket.id,
+  joinedAt: Date.now(),
   isOwner,
 };
 
@@ -624,20 +787,21 @@ socket.join(`ephemeral_session_${reqSessionId}`);
 ### Step 11 — Server: Broadcasting to Existing Participants
 
 ```js
-socket.to(room).emit('participant-joined', {
+socket.to(room).emit("participant-joined", {
   participant: {
     participantId,
     username: reqUsername,
     isOwner,
     joinedAt: participant.joinedAt,
   },
-  participants: participantsList,   // full updated list
+  participants: participantsList, // full updated list
 });
 ```
 
 `socket.to(room)` — sends to everyone in the room **except** the socket that just joined.
 
 In `App.jsx`, `handleParticipantJoined` on the existing participants' side:
+
 1. Updates `activeSession.participants` in React state (sidebar refreshes)
 2. Adds system message: `"Rahul joined the session."`
 3. Calls `playUserJoinedSound()` — ascending sine tone
@@ -653,16 +817,16 @@ const handleJoinSuccess = (data) => {
   setActiveSessionAndRef(data);
   setMessages([
     {
-      messageId:  'sys-join',
-      senderId:   'SYSTEM',
-      senderName: 'SYSTEM',
-      isOwner:    false,
+      messageId: "sys-join",
+      senderId: "SYSTEM",
+      senderName: "SYSTEM",
+      isOwner: false,
       text: `Authenticated to secure line [${data.sessionId}]. Welcome, ${data.username}.`,
-      timestamp:  Date.now(),
-      isSystem:   true,
+      timestamp: Date.now(),
+      isSystem: true,
     },
   ]);
-  setUiState('ACTIVE');
+  setUiState("ACTIVE");
 };
 ```
 
@@ -693,20 +857,20 @@ The messages array starts with **one system welcome message**. No prior history 
 
 ## 6. Error Paths — What Can Go Wrong Joining
 
-| Error Code | When It Fires | Message Shown to User |
-|---|---|---|
-| `SESSION_NOT_FOUND` | `findSessionRecord()` returns null | "Session does not exist or was destroyed." |
-| `SESSION_ENDING` | `dbRecord.status !== 'ACTIVE'` | "Session is ending or destroyed and cannot accept new joiners." |
-| `INVALID_PASSKEY` | `bcrypt.compare()` returns false | "Invalid session passkey. Verification failed." |
+| Error Code           | When It Fires                        | Message Shown to User                                                  |
+| -------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
+| `SESSION_NOT_FOUND`  | `findSessionRecord()` returns null   | "Session does not exist or was destroyed."                             |
+| `SESSION_ENDING`     | `dbRecord.status !== 'ACTIVE'`       | "Session is ending or destroyed and cannot accept new joiners."        |
+| `INVALID_PASSKEY`    | `bcrypt.compare()` returns false     | "Invalid session passkey. Verification failed."                        |
 | `PARTICIPANT_BANNED` | `isParticipantBanned()` returns true | "You have been removed by the owner and are banned from this session." |
-| `SERVER_ERROR` | Unhandled exception in handler | "Unexpected server error during join." |
+| `SERVER_ERROR`       | Unhandled exception in handler       | "Unexpected server error during join."                                 |
 
 All errors flow into `handleJoinError` in `App.jsx`:
 
 ```js
 const handleJoinError = (err) => {
   setIsLoading(false);
-  setJoinErrorMessage(err.message || 'Failed to authenticate to session.');
+  setJoinErrorMessage(err.message || "Failed to authenticate to session.");
 };
 ```
 
@@ -747,7 +911,7 @@ const inviteUrl = `${window.location.origin}/?join=${sessionData.sessionId}&key=
 `<ActiveSessionView>` includes a "Test in Tab" button that calls:
 
 ```js
-window.open(inviteUrl, '_blank');
+window.open(inviteUrl, "_blank");
 ```
 
 This opens a new browser tab with the invite URL — useful for developers testing two participants in the same browser without a second device.
@@ -767,24 +931,25 @@ Once inside a session, `activeSession` React state (and `activeSessionRef.curren
 
 ```ts
 interface ActiveSession {
-  success:       boolean;
-  sessionId:     string;        // "AB3K7M"
-  participantId: string;        // UUID v4 — YOUR identity
-  username:      string;        // YOUR display name
-  isOwner:       boolean;
+  success: boolean;
+  sessionId: string; // "AB3K7M"
+  participantId: string; // UUID v4 — YOUR identity
+  username: string; // YOUR display name
+  isOwner: boolean;
 
-  passkey?:      string;        // ONLY present for session creator
+  passkey?: string; // ONLY present for session creator
 
-  participants:  Array<{
+  participants: Array<{
     participantId: string;
-    username:      string;
-    isOwner:       boolean;
-    joinedAt:      number;      // Unix ms
+    username: string;
+    isOwner: boolean;
+    joinedAt: number; // Unix ms
   }>;
 }
 ```
 
 This object:
+
 - Is **never stored in MongoDB** — only in browser React state
 - Is **cleared** when the session ends (`setActiveSessionAndRef(null)`)
 - Is passed as the `sessionData` prop to `<ActiveSessionView>`
@@ -796,28 +961,28 @@ This object:
 
 ### At Session Creation
 
-| Data | RAM `sessions` Map | MongoDB `sessions` collection |
-|---|---|---|
-| Session ID | Yes — map key | Yes — `sessionId` field |
-| Owner participant ID | Yes — `ownerParticipantId` | Yes — `ownerParticipantId` |
-| Plain passkey | **Never stored** | **Never stored** |
-| Passkey bcrypt hash | No — not needed in RAM | Yes — `passkeyHash` |
-| Status | Yes — `session.status` | Yes — `status` |
-| Owner socket ID | Yes — `ownerSocketId` | No — socket IDs are transient |
-| Participants Map | Yes — `session.participants` | No |
-| Bans Set | Yes — `bannedParticipantIds` | Yes — `SessionBan` collection |
-| File buffers | Yes — `ephemeralFiles` Map | Never |
-| Destroy timer | Yes — `destroyTimeoutId` | No |
+| Data                 | RAM `sessions` Map           | MongoDB `sessions` collection |
+| -------------------- | ---------------------------- | ----------------------------- |
+| Session ID           | Yes — map key                | Yes — `sessionId` field       |
+| Owner participant ID | Yes — `ownerParticipantId`   | Yes — `ownerParticipantId`    |
+| Plain passkey        | **Never stored**             | **Never stored**              |
+| Passkey bcrypt hash  | No — not needed in RAM       | Yes — `passkeyHash`           |
+| Status               | Yes — `session.status`       | Yes — `status`                |
+| Owner socket ID      | Yes — `ownerSocketId`        | No — socket IDs are transient |
+| Participants Map     | Yes — `session.participants` | No                            |
+| Bans Set             | Yes — `bannedParticipantIds` | Yes — `SessionBan` collection |
+| File buffers         | Yes — `ephemeralFiles` Map   | Never                         |
+| Destroy timer        | Yes — `destroyTimeoutId`     | No                            |
 
 ### On Server Restart
 
-| Survives | Lost |
-|---|---|
-| Session metadata (ID, owner, passkey hash, status) | All live participants (RAM wiped) |
-| Ban records (`SessionBan` documents) | All socket room memberships |
-| Session status (`ACTIVE` / `ENDING`) | All ephemeral file buffers |
-| | All in-progress destroy timers |
-| | All message history (was never stored anywhere) |
+| Survives                                           | Lost                                            |
+| -------------------------------------------------- | ----------------------------------------------- |
+| Session metadata (ID, owner, passkey hash, status) | All live participants (RAM wiped)               |
+| Ban records (`SessionBan` documents)               | All socket room memberships                     |
+| Session status (`ACTIVE` / `ENDING`)               | All ephemeral file buffers                      |
+|                                                    | All in-progress destroy timers                  |
+|                                                    | All message history (was never stored anywhere) |
 
 ---
 
@@ -968,16 +1133,16 @@ Enter username → Click submit
 
 ### Socket Events — Create & Join
 
-| Event | Direction | When |
-|---|---|---|
-| `create-session` | Browser → Server | Owner submits create form |
-| `session-created` | Server → Browser | Session created (via callback) |
-| `join-session` | Browser → Server | Participant submits join form |
-| `join-success` | Server → Browser | All 4 validations pass (via callback) |
-| `join-error` | Server → Browser | Any validation fails (via callback) |
-| `participant-joined` | Server → All Others in Room | New participant added |
+| Event                | Direction                   | When                                  |
+| -------------------- | --------------------------- | ------------------------------------- |
+| `create-session`     | Browser → Server            | Owner submits create form             |
+| `session-created`    | Server → Browser            | Session created (via callback)        |
+| `join-session`       | Browser → Server            | Participant submits join form         |
+| `join-success`       | Server → Browser            | All 4 validations pass (via callback) |
+| `join-error`         | Server → Browser            | Any validation fails (via callback)   |
+| `participant-joined` | Server → All Others in Room | New participant added                 |
 
 ---
 
-*Document generated: 2026-08-30*
-*Source files analysed: `server.js`, `App.jsx`, `CreateSessionView.jsx`, `JoinSessionView.jsx`, `socket.js`, `sessionService.js`, `authenticationService.js`, `generateSessionId.js`, `generatePasskey.js`, `Session.js`, `SessionBan.js`, `database.js`*
+_Document generated: 2026-08-30_
+_Source files analysed: `server.js`, `App.jsx`, `CreateSessionView.jsx`, `JoinSessionView.jsx`, `socket.js`, `sessionService.js`, `authenticationService.js`, `generateSessionId.js`, `generatePasskey.js`, `Session.js`, `SessionBan.js`, `database.js`_

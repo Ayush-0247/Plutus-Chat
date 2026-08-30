@@ -1,4 +1,5 @@
 # PRD — Plutus Secure Line
+
 ### Product Requirements Document · Version 2.0 · Last Updated: 2026-08-30
 
 ---
@@ -79,6 +80,7 @@ The system does not "delete" messages after the fact. Messages are never stored 
 ### Principle 2 — The Database Stores Metadata, Not Communication
 
 The only data in MongoDB is:
+
 - `sessionId`, `ownerParticipantId`, `passkeyHash`, `status`, timestamps
 - Participant ban records (per session)
 
@@ -87,6 +89,7 @@ The database does **not** contain: messages, file data, participant names, or ty
 ### Principle 3 — Owner Supremacy
 
 The session creator (owner) has absolute authority:
+
 - Can kick and permanently ban any participant
 - Is the only one who can end the session
 - Their departure automatically triggers destruction for all participants
@@ -94,6 +97,7 @@ The session creator (owner) has absolute authority:
 ### Principle 4 — Complete and Verifiable Destruction
 
 When a session is destroyed:
+
 1. RAM session state is cleared (participants, timers, ban sets)
 2. All ephemeral file buffers are deleted from RAM
 3. MongoDB session document is deleted
@@ -109,10 +113,10 @@ If MongoDB is unavailable, the system falls back to in-memory metadata maps and 
 
 ## 3. User Roles
 
-| Role | How Acquired | Capabilities |
-|---|---|---|
-| **Owner** | Created the session | Create session, kick participants, end session, copy invite link, leave (triggers destruction) |
-| **Participant** | Joined via ID+passkey | Send messages, send files, view files, leave voluntarily |
+| Role            | How Acquired          | Capabilities                                                                                   |
+| --------------- | --------------------- | ---------------------------------------------------------------------------------------------- |
+| **Owner**       | Created the session   | Create session, kick participants, end session, copy invite link, leave (triggers destruction) |
+| **Participant** | Joined via ID+passkey | Send messages, send files, view files, leave voluntarily                                       |
 
 There is no admin, moderator, or guest role. All participants have identical read/send permissions; only the owner has moderation rights.
 
@@ -127,9 +131,11 @@ There is no admin, moderator, or guest role. All participants have identical rea
 **Trigger:** Owner clicks "Create Session" on the Home screen.
 
 **Inputs:**
+
 - `username` (string, 1–32 chars, required; defaults to `"Session Creator"` if blank)
 
 **Server actions:**
+
 1. Generate a unique 6-character `sessionId` from the alphabet `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no visually ambiguous chars)
 2. Loop until the ID is not already in MongoDB **and** not in RAM (collision-proof)
 3. Generate a passkey in the format `WORD-NNN` (21 words × numbers 100–998)
@@ -141,10 +147,12 @@ There is no admin, moderator, or guest role. All participants have identical rea
 9. Respond with: `{ sessionId, passkey (plain, once only), participantId, isOwner: true, participants }`
 
 **Client actions:**
+
 - Store response in `activeSession` React state
 - Switch `uiState` to `'ACTIVE'`
 
 **Constraints:**
+
 - The plain passkey is returned to the owner **exactly once** and never stored anywhere after that
 - All communications are via Socket.IO (no HTTP for creation)
 
@@ -155,6 +163,7 @@ There is no admin, moderator, or guest role. All participants have identical rea
 **Trigger:** Participant submits the Join form or opens an invite link.
 
 **Inputs:**
+
 - `sessionId` (6 chars, uppercase)
 - `passkey` (case-insensitive; normalized to uppercase server-side)
 - `username` (1–32 chars; defaults to `"Participant"` if blank)
@@ -162,14 +171,15 @@ There is no admin, moderator, or guest role. All participants have identical rea
 
 **Server validation sequence (in order, fail-fast):**
 
-| Step | Check | Error Code |
-|---|---|---|
-| 1 | Session exists in MongoDB (or in-memory fallback) | `SESSION_NOT_FOUND` |
-| 2 | `dbRecord.status === 'ACTIVE'` | `SESSION_ENDING` |
-| 3 | `bcrypt.compare(passkey, passkeyHash)` | `INVALID_PASSKEY` |
-| 4 | `existingParticipantId` not in `SessionBan` (if rejoin) | `PARTICIPANT_BANNED` |
+| Step | Check                                                   | Error Code           |
+| ---- | ------------------------------------------------------- | -------------------- |
+| 1    | Session exists in MongoDB (or in-memory fallback)       | `SESSION_NOT_FOUND`  |
+| 2    | `dbRecord.status === 'ACTIVE'`                          | `SESSION_ENDING`     |
+| 3    | `bcrypt.compare(passkey, passkeyHash)`                  | `INVALID_PASSKEY`    |
+| 4    | `existingParticipantId` not in `SessionBan` (if rejoin) | `PARTICIPANT_BANNED` |
 
 **On success:**
+
 - If no RAM session exists (post-restart), reconstruct from DB record
 - Assign `participantId` (new UUID or provided ID)
 - Detect if rejoining owner (`participantId === dbRecord.ownerParticipantId`)
@@ -179,6 +189,7 @@ There is no admin, moderator, or guest role. All participants have identical rea
 - Return success payload to joiner
 
 **Client actions:**
+
 - Store response in `activeSession` React state
 - Initialize `messages` with a system welcome message
 - Switch `uiState` to `'ACTIVE'`
@@ -199,6 +210,7 @@ There is no admin, moderator, or guest role. All participants have identical rea
 ### FR-04 File Transfer (Images & PDFs)
 
 **Upload flow:**
+
 1. Client validates file locally (type + size)
 2. Client sends file via `POST /api/files/upload` (multipart/form-data + XHR for progress)
 3. Multer receives into `memoryStorage` — file goes to RAM Buffer, **never to disk**
@@ -207,20 +219,22 @@ There is no admin, moderator, or guest role. All participants have identical rea
 6. Server emits `receive-file` socket event (metadata only, no binary) to all in room
 
 **Retrieval:**
+
 - `GET /api/files/:fileId?sessionId=...&participantId=...` — served from RAM
 - Requires both a valid `sessionId` and `participantId` from the same session
 - Optional `?download=true` sets `Content-Disposition: attachment`
 
 **Deletion:**
+
 - All files for a session are deleted from `ephemeralFiles` Map when `executeHardDestruction()` runs
 - Background cleanup also removes orphaned files older than 2 hours
 
 **Supported types:**
 
-| Type | Allowed Formats | Max Size |
-|---|---|---|
-| Image | JPEG, PNG, WEBP, GIF | 10 MB (configurable via `MAX_IMAGE_SIZE`) |
-| Document | PDF only | 25 MB (configurable via `MAX_PDF_SIZE`) |
+| Type     | Allowed Formats      | Max Size                                  |
+| -------- | -------------------- | ----------------------------------------- |
+| Image    | JPEG, PNG, WEBP, GIF | 10 MB (configurable via `MAX_IMAGE_SIZE`) |
+| Document | PDF only             | 25 MB (configurable via `MAX_PDF_SIZE`)   |
 
 ---
 
@@ -236,6 +250,7 @@ There is no admin, moderator, or guest role. All participants have identical rea
 ### FR-06 Participant Management & Kick System
 
 **Kick flow:**
+
 1. Owner clicks Kick button next to a participant's name
 2. Confirmation modal appears
 3. Owner confirms → `kick-participant` socket event emitted
@@ -249,6 +264,7 @@ There is no admin, moderator, or guest role. All participants have identical rea
 9. System message shown: `"username was kicked and permanently barred by the owner."`
 
 **Ban persistence:**
+
 - Ban survives server restarts (stored in MongoDB)
 - Ban is cleared when session is destroyed (`deleteSessionRecord` deletes all `SessionBan` docs)
 - Ban is by `participantId`, not by IP — fresh browser can rejoin
@@ -258,23 +274,25 @@ There is no admin, moderator, or guest role. All participants have identical rea
 ### FR-07 Session Termination & Destruction
 
 **Triggers:**
+
 - Owner clicks "Terminate Session" and confirms (`end-session` event)
 - Owner closes their browser tab (socket `disconnect` event detected)
 - Owner voluntarily leaves (`leave-session` event with `isOwner: true`)
 
 **15-second countdown sequence:**
 
-| Time | Event |
-|---|---|
-| T+0s | `initiateSessionDestruction()` called |
-| T+0s | `session.status = 'ENDING'` in RAM |
-| T+0s | `updateSessionStatus('ENDING')` written to MongoDB |
-| T+0s | `session-ending` broadcast: all browsers show `<EndingCountdownModal>` |
-| T+0s to T+5s | Warning phase — "SESSION IS CLOSING" |
-| T+5s to T+15s | Countdown phase — "PURGING EPHEMERAL RAM" with live timer |
-| T+15s | `executeHardDestruction()` fires |
+| Time          | Event                                                                  |
+| ------------- | ---------------------------------------------------------------------- |
+| T+0s          | `initiateSessionDestruction()` called                                  |
+| T+0s          | `session.status = 'ENDING'` in RAM                                     |
+| T+0s          | `updateSessionStatus('ENDING')` written to MongoDB                     |
+| T+0s          | `session-ending` broadcast: all browsers show `<EndingCountdownModal>` |
+| T+0s to T+5s  | Warning phase — "SESSION IS CLOSING"                                   |
+| T+5s to T+15s | Countdown phase — "PURGING EPHEMERAL RAM" with live timer              |
+| T+15s         | `executeHardDestruction()` fires                                       |
 
 **Hard destruction actions (`executeHardDestruction`):**
+
 1. Broadcast `session-destroyed` to all sockets in room
 2. All sockets `leave(room)`
 3. All `socketToParticipant` entries deleted
@@ -285,6 +303,7 @@ There is no admin, moderator, or guest role. All participants have identical rea
 8. `deleteSessionRecord(sessionId)` — MongoDB Session doc + all SessionBan docs deleted
 
 **Client reaction to `session-destroyed`:**
+
 - `setMessages([])` — chat cleared
 - `setActiveSession(null)` — session identity cleared
 - `setTypingUsers([])` — typing state cleared
@@ -307,16 +326,16 @@ There is no admin, moderator, or guest role. All participants have identical rea
 
 All sounds are **synthesized in real-time** using the Web Audio API. No audio files (.mp3, .wav, .ogg) exist anywhere in the project.
 
-| Function | Trigger | Wave | Frequency | Duration |
-|---|---|---|---|---|
-| `playMessageSentSound()` | You send a message | Sine | 440→880Hz | 80ms |
-| `playMessageReceivedSound()` | Others send a message | Triangle | D5→A5 | 140ms |
-| `playUserJoinedSound()` | Participant joins | Sine | C5→E5 | 150ms |
-| `playUserLeftSound()` | Participant leaves/kicked | Sine | E5→A4 | 150ms |
-| `playCountdownTickSound(isUrgent)` | Destruction countdown tick | Sine/Sawtooth | 440/880Hz | — |
-| `playPurgedSound()` | Session destroyed screen | Sine | 220→110Hz | 300ms |
-| `playFileSentSound()` | You send a file | Sine | G4→C5→G5 | 180ms |
-| `playFileReceivedSound()` | Others send a file | Sine | E5→A5→C6 | 220ms |
+| Function                           | Trigger                    | Wave          | Frequency | Duration |
+| ---------------------------------- | -------------------------- | ------------- | --------- | -------- |
+| `playMessageSentSound()`           | You send a message         | Sine          | 440→880Hz | 80ms     |
+| `playMessageReceivedSound()`       | Others send a message      | Triangle      | D5→A5     | 140ms    |
+| `playUserJoinedSound()`            | Participant joins          | Sine          | C5→E5     | 150ms    |
+| `playUserLeftSound()`              | Participant leaves/kicked  | Sine          | E5→A4     | 150ms    |
+| `playCountdownTickSound(isUrgent)` | Destruction countdown tick | Sine/Sawtooth | 440/880Hz | —        |
+| `playPurgedSound()`                | Session destroyed screen   | Sine          | 220→110Hz | 300ms    |
+| `playFileSentSound()`              | You send a file            | Sine          | G4→C5→G5  | 180ms    |
+| `playFileReceivedSound()`          | Others send a file         | Sine          | E5→A5→C6  | 220ms    |
 
 Audio context is lazy-initialized on first use (browser autoplay policy compliance).
 
@@ -356,14 +375,14 @@ Audio context is lazy-initialized on first use (browser autoplay policy complian
 
 ### NFR-01 Ephemeral Data Guarantee
 
-| Invariant | Requirement |
-|---|---|
-| Messages | MUST NOT be written to any database, log file, or persistent store |
-| File data | MUST NOT be written to disk; must use `multer.memoryStorage()` only |
-| Plain passkeys | MUST NOT be stored anywhere; only bcrypt hash in MongoDB |
-| Participant names/socket IDs | MUST NOT be persisted to database |
-| Session destruction | MUST delete MongoDB records in addition to RAM cleanup |
-| Post-session file access | MUST return `FILE_NOT_FOUND` after session destruction |
+| Invariant                    | Requirement                                                         |
+| ---------------------------- | ------------------------------------------------------------------- |
+| Messages                     | MUST NOT be written to any database, log file, or persistent store  |
+| File data                    | MUST NOT be written to disk; must use `multer.memoryStorage()` only |
+| Plain passkeys               | MUST NOT be stored anywhere; only bcrypt hash in MongoDB            |
+| Participant names/socket IDs | MUST NOT be persisted to database                                   |
+| Session destruction          | MUST delete MongoDB records in addition to RAM cleanup              |
+| Post-session file access     | MUST return `FILE_NOT_FOUND` after session destruction              |
 
 ### NFR-02 Security & Authentication
 
@@ -403,10 +422,10 @@ Audio context is lazy-initialized on first use (browser autoplay policy complian
 
 The system uses exactly two parallel state stores:
 
-| Layer | Technology | Persistence | Contents |
-|---|---|---|---|
-| RAM | Node.js `Map` / `Set` | No (dies with process) | Live participants, socket IDs, file buffers, timers |
-| Database | MongoDB via Mongoose | Yes (survives restart) | Session metadata, passkey hashes, ban records |
+| Layer    | Technology            | Persistence            | Contents                                            |
+| -------- | --------------------- | ---------------------- | --------------------------------------------------- |
+| RAM      | Node.js `Map` / `Set` | No (dies with process) | Live participants, socket IDs, file buffers, timers |
+| Database | MongoDB via Mongoose  | Yes (survives restart) | Session metadata, passkey hashes, ban records       |
 
 These layers are **additive, not replacements**. Every real-time operation (message relay, file serving, typing) touches RAM only. MongoDB is only accessed at session lifecycle events (create, join, kick, status change, destroy).
 
@@ -415,9 +434,9 @@ These layers are **additive, not replacements**. Every real-time operation (mess
 Three global Maps in `server.js`:
 
 ```js
-const sessions           = new Map();  // sessionId -> session object
+const sessions = new Map(); // sessionId -> session object
 const socketToParticipant = new Map(); // socket.id -> { sessionId, participantId }
-const ephemeralFiles     = new Map();  // fileId -> { buffer, mimetype, size, sessionId, ... }
+const ephemeralFiles = new Map(); // fileId -> { buffer, mimetype, size, sessionId, ... }
 ```
 
 ### AR-03 Database Layer (Minimal Persistent Metadata)
@@ -428,6 +447,7 @@ Two MongoDB collections via Mongoose:
 - **`sessionbans`** — `SessionBan` model: `sessionId`, `participantId`, `bannedAt` (composite unique index)
 
 **Fallback maps when DB is unavailable:**
+
 - `inMemorySessionMeta` — `Map` replacing `sessions` collection
 - `inMemorySessionBans` — `Set` of `"sessionId:participantId"` strings
 
@@ -477,23 +497,23 @@ src/
 
 ### Session (MongoDB)
 
-| Field | Type | Description |
-|---|---|---|
-| `sessionId` | String | 6-char uppercase, unique, indexed |
-| `ownerParticipantId` | String | UUID v4 of the session creator |
-| `passkeyHash` | String | bcrypt hash (10 rounds) of the plain passkey |
-| `status` | Enum | `ACTIVE`, `ENDING`, `EXPIRED`, `DESTROYED` |
-| `createdAt` | Date | Session creation timestamp |
-| `expiresAt` | Date \| null | Optional expiry timestamp |
-| `endingReason` | String \| null | `OWNER_LEFT`, `OWNER_ENDED`, or null |
+| Field                | Type           | Description                                  |
+| -------------------- | -------------- | -------------------------------------------- |
+| `sessionId`          | String         | 6-char uppercase, unique, indexed            |
+| `ownerParticipantId` | String         | UUID v4 of the session creator               |
+| `passkeyHash`        | String         | bcrypt hash (10 rounds) of the plain passkey |
+| `status`             | Enum           | `ACTIVE`, `ENDING`, `EXPIRED`, `DESTROYED`   |
+| `createdAt`          | Date           | Session creation timestamp                   |
+| `expiresAt`          | Date \| null   | Optional expiry timestamp                    |
+| `endingReason`       | String \| null | `OWNER_LEFT`, `OWNER_ENDED`, or null         |
 
 ### SessionBan (MongoDB)
 
-| Field | Type | Description |
-|---|---|---|
-| `sessionId` | String | Indexed |
+| Field           | Type   | Description                       |
+| --------------- | ------ | --------------------------------- |
+| `sessionId`     | String | Indexed                           |
 | `participantId` | String | UUID v4 of the banned participant |
-| `bannedAt` | Date | When the ban was applied |
+| `bannedAt`      | Date   | When the ban was applied          |
 
 Composite unique index on `(sessionId, participantId)`.
 
@@ -538,32 +558,32 @@ Composite unique index on `(sessionId, participantId)`.
 
 #### Client → Server
 
-| Event | Payload | Description |
-|---|---|---|
-| `create-session` | `{ username }` | Create a new session |
-| `join-session` | `{ sessionId, passkey, username, participantId? }` | Join existing session |
-| `send-message` | `{ sessionId, participantId, text, type }` | Send a chat message |
-| `typing` | `{ sessionId, participantId, isTyping }` | Typing indicator |
+| Event              | Payload                                             | Description                     |
+| ------------------ | --------------------------------------------------- | ------------------------------- |
+| `create-session`   | `{ username }`                                      | Create a new session            |
+| `join-session`     | `{ sessionId, passkey, username, participantId? }`  | Join existing session           |
+| `send-message`     | `{ sessionId, participantId, text, type }`          | Send a chat message             |
+| `typing`           | `{ sessionId, participantId, isTyping }`            | Typing indicator                |
 | `kick-participant` | `{ sessionId, participantId, targetParticipantId }` | Kick a participant (owner only) |
-| `leave-session` | `{ sessionId, participantId }` | Voluntary leave |
-| `end-session` | `{ sessionId, participantId }` | Terminate session (owner only) |
+| `leave-session`    | `{ sessionId, participantId }`                      | Voluntary leave                 |
+| `end-session`      | `{ sessionId, participantId }`                      | Terminate session (owner only)  |
 
 #### Server → Client
 
-| Event | Payload | Description |
-|---|---|---|
-| `session-created` | `{ success, sessionId, passkey, participantId, isOwner, participants }` | Session created |
-| `join-success` | `{ success, sessionId, participantId, username, isOwner, participants }` | Join successful |
-| `join-error` | `{ success: false, code, message }` | Join failed |
-| `receive-message` | `{ messageId, senderId, senderName, isOwner, text, timestamp }` | Chat message broadcast |
-| `receive-file` | `{ messageId, fileId, senderId, senderName, fileName, fileSize, mimeType, fileType, text, timestamp }` | File broadcast |
-| `user-typing` | `{ participantId, username, isTyping }` | Typing indicator relay |
-| `participant-joined` | `{ participant, participants }` | Someone joined |
-| `participant-left` | `{ participantId, username, participants }` | Someone left |
-| `participant-kicked` | `{ kickedParticipantId, username, participants }` | Someone was kicked (all) |
-| `participant-kicked-self` | `{ reason, sessionId }` | You were kicked |
-| `session-ending` | `{ sessionId, reason, destroyAt, warningDurationMs, countdownDurationMs, totalDurationMs }` | Countdown started |
-| `session-destroyed` | `{ sessionId, message, timestamp }` | Session hard-destroyed |
+| Event                     | Payload                                                                                                | Description              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------ |
+| `session-created`         | `{ success, sessionId, passkey, participantId, isOwner, participants }`                                | Session created          |
+| `join-success`            | `{ success, sessionId, participantId, username, isOwner, participants }`                               | Join successful          |
+| `join-error`              | `{ success: false, code, message }`                                                                    | Join failed              |
+| `receive-message`         | `{ messageId, senderId, senderName, isOwner, text, timestamp }`                                        | Chat message broadcast   |
+| `receive-file`            | `{ messageId, fileId, senderId, senderName, fileName, fileSize, mimeType, fileType, text, timestamp }` | File broadcast           |
+| `user-typing`             | `{ participantId, username, isTyping }`                                                                | Typing indicator relay   |
+| `participant-joined`      | `{ participant, participants }`                                                                        | Someone joined           |
+| `participant-left`        | `{ participantId, username, participants }`                                                            | Someone left             |
+| `participant-kicked`      | `{ kickedParticipantId, username, participants }`                                                      | Someone was kicked (all) |
+| `participant-kicked-self` | `{ reason, sessionId }`                                                                                | You were kicked          |
+| `session-ending`          | `{ sessionId, reason, destroyAt, warningDurationMs, countdownDurationMs, totalDurationMs }`            | Countdown started        |
+| `session-destroyed`       | `{ sessionId, message, timestamp }`                                                                    | Session hard-destroyed   |
 
 ### HTTP REST Endpoints
 
@@ -572,8 +592,15 @@ Composite unique index on `(sessionId, participantId)`.
 **Headers:** `x-session-id`, `x-participant-id`
 **Body:** `multipart/form-data` with `file` field + optional `caption`, `sessionId`, `participantId`
 **Response:**
+
 ```json
-{ "success": true, "fileId": "uuid", "fileName": "...", "fileSize": 12345, "mimeType": "image/jpeg" }
+{
+  "success": true,
+  "fileId": "uuid",
+  "fileName": "...",
+  "fileSize": 12345,
+  "mimeType": "image/jpeg"
+}
 ```
 
 #### `GET /api/files/:fileId`
@@ -585,6 +612,7 @@ Composite unique index on `(sessionId, participantId)`.
 #### `GET /api/health`
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -599,38 +627,45 @@ Composite unique index on `(sessionId, participantId)`.
 #### `GET /api/db-status`
 
 **Response:** Full contents of both MongoDB collections + in-memory session keys.
+
 > ⚠️ Unauthenticated — should be protected or removed in production.
 
 #### `GET /api/session/:sessionId/check`
 
 **Response:**
+
 ```json
-{ "exists": true, "status": "ACTIVE", "createdAt": "...", "participantCount": 2 }
+{
+  "exists": true,
+  "status": "ACTIVE",
+  "createdAt": "...",
+  "participantCount": 2
+}
 ```
 
 ---
 
 ## 9. Limits & Constraints
 
-| Item | Limit | Where Enforced |
-|---|---|---|
-| Username length | 32 characters | Client (`maxLength`) + Server (`.slice(0, 32)`) |
-| Message length | 2,000 characters | Server (`send-message` handler) |
-| Image file size | 10 MB (configurable `MAX_IMAGE_SIZE`) | Client + Server |
-| PDF file size | 25 MB (configurable `MAX_PDF_SIZE`) | Client + Server |
-| File caption length | 500 characters | Client (`maxLength`) + Server (`.slice(0, 500)`) |
-| Session ID length | 6 characters | `generateSessionId.js` |
-| Passkey format | WORD-NNN (21 words × 100–998) | `generatePasskey.js` |
-| Destruction countdown | 15 seconds (5s warning + 10s countdown) | `server.js` |
-| Max sessions | Unlimited (RAM-bounded) | None in code |
-| Max participants per session | Unlimited (RAM-bounded) | None in code |
-| Max files per session | Unlimited (RAM-bounded) | None in code |
-| Session ID input max | 12 characters | JoinSessionView `maxLength` |
-| Passkey input max | 20 characters | JoinSessionView `maxLength` |
-| Socket reconnect attempts | 10 | `socket.js` |
-| Socket reconnect delay | 1,000ms | `socket.js` |
-| Background cleanup interval | Every 10 minutes | `sessionCleanup.js` |
-| Orphaned file max age | 2 hours | `sessionCleanup.js` |
+| Item                         | Limit                                   | Where Enforced                                   |
+| ---------------------------- | --------------------------------------- | ------------------------------------------------ |
+| Username length              | 32 characters                           | Client (`maxLength`) + Server (`.slice(0, 32)`)  |
+| Message length               | 2,000 characters                        | Server (`send-message` handler)                  |
+| Image file size              | 10 MB (configurable `MAX_IMAGE_SIZE`)   | Client + Server                                  |
+| PDF file size                | 25 MB (configurable `MAX_PDF_SIZE`)     | Client + Server                                  |
+| File caption length          | 500 characters                          | Client (`maxLength`) + Server (`.slice(0, 500)`) |
+| Session ID length            | 6 characters                            | `generateSessionId.js`                           |
+| Passkey format               | WORD-NNN (21 words × 100–998)           | `generatePasskey.js`                             |
+| Destruction countdown        | 15 seconds (5s warning + 10s countdown) | `server.js`                                      |
+| Max sessions                 | Unlimited (RAM-bounded)                 | None in code                                     |
+| Max participants per session | Unlimited (RAM-bounded)                 | None in code                                     |
+| Max files per session        | Unlimited (RAM-bounded)                 | None in code                                     |
+| Session ID input max         | 12 characters                           | JoinSessionView `maxLength`                      |
+| Passkey input max            | 20 characters                           | JoinSessionView `maxLength`                      |
+| Socket reconnect attempts    | 10                                      | `socket.js`                                      |
+| Socket reconnect delay       | 1,000ms                                 | `socket.js`                                      |
+| Background cleanup interval  | Every 10 minutes                        | `sessionCleanup.js`                              |
+| Orphaned file max age        | 2 hours                                 | `sessionCleanup.js`                              |
 
 ---
 
@@ -694,6 +729,7 @@ Composite unique index on `(sessionId, participantId)`.
 ```
 
 **Valid status transitions:**
+
 - `ACTIVE` → `ENDING` (via `initiateSessionDestruction`)
 - `ENDING` → `DESTROYED` (via `executeHardDestruction`)
 - `ACTIVE` → `EXPIRED` (via `cleanupExpiredSessions` background job, if `expiresAt` is set)
@@ -706,48 +742,48 @@ Composite unique index on `(sessionId, participantId)`.
 
 ### What is Protected
 
-| Threat | Mitigation |
-|---|---|
-| Passkey brute-force | bcrypt (10 rounds, ~100ms per attempt) |
-| Passkey database leak | Only hash stored — raw passkey never persisted |
-| Session ID collision | Crypto-random (not Math.random()); uniqueness checked in both DB and RAM |
-| Cross-session file access | File access requires valid `sessionId` + `participantId` from same session |
-| Unauthorized message sending | Sender must be in `session.participants` and not in `bannedParticipantIds` |
+| Threat                           | Mitigation                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| Passkey brute-force              | bcrypt (10 rounds, ~100ms per attempt)                                         |
+| Passkey database leak            | Only hash stored — raw passkey never persisted                                 |
+| Session ID collision             | Crypto-random (not Math.random()); uniqueness checked in both DB and RAM       |
+| Cross-session file access        | File access requires valid `sessionId` + `participantId` from same session     |
+| Unauthorized message sending     | Sender must be in `session.participants` and not in `bannedParticipantIds`     |
 | Unauthorized session termination | Only `session.ownerParticipantId` can call `end-session` or `kick-participant` |
-| Data persistence after session | Hard destruction deletes both RAM state and MongoDB records |
-| Stale ban bypass | Bans persist in MongoDB through server restarts |
+| Data persistence after session   | Hard destruction deletes both RAM state and MongoDB records                    |
+| Stale ban bypass                 | Bans persist in MongoDB through server restarts                                |
 
 ### Known Security Gaps (Out of Scope for v2)
 
-| Gap | Impact |
-|---|---|
-| No end-to-end encryption | Server reads plaintext messages during relay |
-| No rate limiting | Message floods and upload spam possible |
-| CORS wildcard `origin: '*'` | Any origin can connect to Socket.IO |
-| Passkey in invite URL | Plain passkey exposed in browser history and server logs |
-| No IP-based ban | Kicked users can rejoin with a fresh browser |
-| `/api/db-status` unauthenticated | Session metadata visible to anyone who knows the URL |
-| No HTTPS enforcement in code | Relies on platform (Render) for TLS termination |
-| No content moderation | Any file passing MIME + size checks is accepted |
+| Gap                              | Impact                                                   |
+| -------------------------------- | -------------------------------------------------------- |
+| No end-to-end encryption         | Server reads plaintext messages during relay             |
+| No rate limiting                 | Message floods and upload spam possible                  |
+| CORS wildcard `origin: '*'`      | Any origin can connect to Socket.IO                      |
+| Passkey in invite URL            | Plain passkey exposed in browser history and server logs |
+| No IP-based ban                  | Kicked users can rejoin with a fresh browser             |
+| `/api/db-status` unauthenticated | Session metadata visible to anyone who knows the URL     |
+| No HTTPS enforcement in code     | Relies on platform (Render) for TLS termination          |
+| No content moderation            | Any file passing MIME + size checks is accepted          |
 
 ---
 
 ## 13. Known Limitations & Out of Scope
 
-| Limitation | Notes |
-|---|---|
-| **No horizontal scaling** | `sessions` Map is local to one process; Redis adapter required for multi-instance |
-| **No message history** | Joiners see no prior messages; there are none to replay |
-| **No end-to-end encryption** | Not planned for current version |
-| **No file re-upload after session restart** | Files are RAM-only; they don't survive restarts |
-| **No participant limit per session** | Caps only at available RAM |
-| **No rate limiting** | No `express-rate-limit` or socket middleware throttling |
-| **Ban by participantId only** | Fresh browser/incognito bypasses kick |
-| **No user accounts or profiles** | Identity is fully session-scoped |
-| **No message editing or deletion** | Messages are immutable once sent |
-| **No read receipts** | Not implemented |
-| **No video/audio** | Only text, images, and PDFs |
-| **No .mp4, .docx, .zip support** | Only JPEG, PNG, WEBP, GIF, PDF |
+| Limitation                                  | Notes                                                                             |
+| ------------------------------------------- | --------------------------------------------------------------------------------- |
+| **No horizontal scaling**                   | `sessions` Map is local to one process; Redis adapter required for multi-instance |
+| **No message history**                      | Joiners see no prior messages; there are none to replay                           |
+| **No end-to-end encryption**                | Not planned for current version                                                   |
+| **No file re-upload after session restart** | Files are RAM-only; they don't survive restarts                                   |
+| **No participant limit per session**        | Caps only at available RAM                                                        |
+| **No rate limiting**                        | No `express-rate-limit` or socket middleware throttling                           |
+| **Ban by participantId only**               | Fresh browser/incognito bypasses kick                                             |
+| **No user accounts or profiles**            | Identity is fully session-scoped                                                  |
+| **No message editing or deletion**          | Messages are immutable once sent                                                  |
+| **No read receipts**                        | Not implemented                                                                   |
+| **No video/audio**                          | Only text, images, and PDFs                                                       |
+| **No .mp4, .docx, .zip support**            | Only JPEG, PNG, WEBP, GIF, PDF                                                    |
 
 ---
 
@@ -755,46 +791,46 @@ Composite unique index on `(sessionId, participantId)`.
 
 ### Backend
 
-| Technology | Version | Purpose |
-|---|---|---|
-| Node.js | LTS | Runtime |
-| Express | ^4.21.2 | HTTP server + REST API |
-| Socket.IO | ^4.8.3 | WebSocket real-time transport |
-| Mongoose | ^9.9.4 | MongoDB ODM |
-| bcryptjs | ^3.0.3 | Passkey hashing |
-| multer | ^2.2.0 | File upload (memory storage) |
-| dotenv | ^17.4.2 | Environment variable loading |
+| Technology | Version | Purpose                       |
+| ---------- | ------- | ----------------------------- |
+| Node.js    | LTS     | Runtime                       |
+| Express    | ^4.21.2 | HTTP server + REST API        |
+| Socket.IO  | ^4.8.3  | WebSocket real-time transport |
+| Mongoose   | ^9.9.4  | MongoDB ODM                   |
+| bcryptjs   | ^3.0.3  | Passkey hashing               |
+| multer     | ^2.2.0  | File upload (memory storage)  |
+| dotenv     | ^17.4.2 | Environment variable loading  |
 
 ### Frontend
 
-| Technology | Version | Purpose |
-|---|---|---|
-| React | ^19.0.1 | UI framework |
-| socket.io-client | ^4.8.3 | WebSocket client |
-| motion (Framer Motion) | ^12.23.24 | Animations |
-| lucide-react | ^0.546.0 | Icons |
-| TailwindCSS | ^4.1.14 | Styling |
-| Vite | ^6.2.3 | Build tool + dev server |
+| Technology             | Version   | Purpose                 |
+| ---------------------- | --------- | ----------------------- |
+| React                  | ^19.0.1   | UI framework            |
+| socket.io-client       | ^4.8.3    | WebSocket client        |
+| motion (Framer Motion) | ^12.23.24 | Animations              |
+| lucide-react           | ^0.546.0  | Icons                   |
+| TailwindCSS            | ^4.1.14   | Styling                 |
+| Vite                   | ^6.2.3    | Build tool + dev server |
 
 ### Build & Dev
 
-| Technology | Purpose |
-|---|---|
-| esbuild | Bundle `server.js` to `dist/server.cjs` for production |
-| tsx | TypeScript execution for development scripts |
+| Technology | Purpose                                                |
+| ---------- | ------------------------------------------------------ |
+| esbuild    | Bundle `server.js` to `dist/server.cjs` for production |
+| tsx        | TypeScript execution for development scripts           |
 
 ---
 
 ## 15. Environment Variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `PORT` | No | `3000` | HTTP server port |
-| `NODE_ENV` | No | `development` | `production` enables static file serving from `dist/` |
-| `MONGODB_URI` | No | — | MongoDB connection string. If absent, in-memory fallback is used |
-| `VITE_SERVER_URL` | No | — | Override socket server URL (for custom deployments) |
-| `MAX_IMAGE_SIZE` | No | `10485760` (10MB) | Max image upload size in bytes |
-| `MAX_PDF_SIZE` | No | `26214400` (25MB) | Max PDF upload size in bytes |
+| Variable          | Required | Default           | Description                                                      |
+| ----------------- | -------- | ----------------- | ---------------------------------------------------------------- |
+| `PORT`            | No       | `3000`            | HTTP server port                                                 |
+| `NODE_ENV`        | No       | `development`     | `production` enables static file serving from `dist/`            |
+| `MONGODB_URI`     | No       | —                 | MongoDB connection string. If absent, in-memory fallback is used |
+| `VITE_SERVER_URL` | No       | —                 | Override socket server URL (for custom deployments)              |
+| `MAX_IMAGE_SIZE`  | No       | `10485760` (10MB) | Max image upload size in bytes                                   |
+| `MAX_PDF_SIZE`    | No       | `26214400` (25MB) | Max PDF upload size in bytes                                     |
 
 **Local development:** Copy `.env.example` to `.env` and set `MONGODB_URI` to a MongoDB Atlas connection string.
 
@@ -819,6 +855,7 @@ services:
 ```
 
 **Build command:** `npm install && npm run build`
+
 - `vite build` — compiles React app to `dist/`
 - `esbuild server.js` — bundles server to `dist/server.cjs`
 
@@ -829,6 +866,7 @@ In `NODE_ENV=production`, the server serves the React SPA from `dist/` as static
 ### Why NOT Vercel / Serverless
 
 Vercel is incompatible because:
+
 1. Socket.IO requires a **persistent TCP connection** — serverless functions die after seconds
 2. The `sessions` and `ephemeralFiles` Maps require **persistent in-memory state** — each serverless invocation has empty memory
 3. The MongoDB connection requires a **persistent process** — cold-starting a connection per-request is unacceptable
@@ -839,16 +877,16 @@ Railway, Fly.io, DigitalOcean App Platform, Heroku, any VPS with Node.js.
 
 ### Render.com RAM Estimates
 
-| Plan | RAM | Estimated Capacity |
-|---|---|---|
-| Free | 512 MB, spins down after 15min inactivity | ~100–300 text-only users; ~30–50 with files |
-| Starter ($7/mo) | 512 MB, always-on | Same RAM, no cold starts |
-| Standard ($25/mo) | 1 GB, always-on | ~2× file capacity of Starter |
+| Plan              | RAM                                       | Estimated Capacity                          |
+| ----------------- | ----------------------------------------- | ------------------------------------------- |
+| Free              | 512 MB, spins down after 15min inactivity | ~100–300 text-only users; ~30–50 with files |
+| Starter ($7/mo)   | 512 MB, always-on                         | Same RAM, no cold starts                    |
+| Standard ($25/mo) | 1 GB, always-on                           | ~2× file capacity of Starter                |
 
 **RAM exhaustion:** Node.js crashes → Render auto-restarts → all RAM state (sessions, files) lost → MongoDB metadata survives → users can attempt to rejoin.
 
 ---
 
-*PRD Version 2.0 — Reflects Phase 2 architecture with MongoDB integration, bcrypt passkey hashing, dual-layer state model, and background cleanup system.*
-*Document author: Engineering team — Plutus Secure Line*
-*Date: 2026-08-30*
+_PRD Version 2.0 — Reflects Phase 2 architecture with MongoDB integration, bcrypt passkey hashing, dual-layer state model, and background cleanup system._
+_Document author: Engineering team — Plutus Secure Line_
+_Date: 2026-08-30_
