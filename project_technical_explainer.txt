@@ -21,7 +21,138 @@
 
 ================================================================================
 SECTION 1: VERCEL VS RENDER — WHY VERCEL WILL NOT WORK
-================================================================================
+=======================================# PRODUCT REQUIREMENT DOCUMENT (PRD)
+
+## 1. Executive Summary & Vision
+* **Product Name:** Pulse Chat (Instant Messaging Platform)
+* **Goal:** Build a high-performance, real-time messaging application with a 100% human-centric instant messenger (IM) interface (comparable to WhatsApp, Telegram, and iMessage), strictly omitting generative AI UI paradigms.
+* **Target Platforms:** Web (Desktop/Mobile Web Responsive), iOS, Android.
+* **Core Philosophy:** Low-latency, direct communication, intuitive status feedback (presence, typing, read receipts), and clear spatial distinction between incoming and outgoing messages.
+
+---
+
+## 2. UI/UX Paradigm & Layout Rules
+
+### Strict Anti-Patterns (Excluded Elements)
+* No centered, full-width single-column conversational views.
+* No alternating assistant/system avatar badges on content rows.
+* No markdown rendering containers with inline "Copy Code" action blocks.
+* No typewriter token streaming effects or "Stop Generating" buttons.
+* No thumbs-up/down ratings, regeneration buttons, or source citation chips.
+* No floating prompt textbars labeled with "Ask anything..." prompts.
+
+### Instant Messenger UI Layout Specifications
+* **Desktop Structure:** 
+  * Left Sidebar (30–35% width): User profile header, global search bar, pinned chats, and scrollable conversation list sorted by `last_message_at`.
+  * Right Chat Area (65–70% width): Fixed header (avatar, contact name, online/typing status, action menu), vertically scrolling message stream, and bottom-anchored input bar.
+* **Mobile Structure:** Dedicated tabbed home screen (Chats, Calls, Settings) transitioning into a full-screen chat view with a top navigation bar and bottom input dock.
+* **Message Alignment:**
+  * **Incoming:** Left-aligned, light/neutral background (e.g., `#F3F4F6`), subtle border or tail pointing left.
+  * **Outgoing:** Right-aligned, primary/accent background (e.g., `#2563EB` or `#00A884`), text color with high contrast, tail pointing right.
+* **Metadata Placement:** Small, muted timestamp and delivery receipt icons positioned inside or immediately adjacent to the lower right corner of each bubble.
+
+---
+
+## 3. Core Functional Requirements
+
+### 3.1. Authentication & User Profile
+* **Auth Methods:** Passwordless OTP via SMS/Email or OAuth 2.0 (Google, Apple).
+* **Profile Fields:**
+  * Unique handle (`@username`) and Display Name.
+  * Profile avatar with client-side cropping.
+  * Freeform status line (e.g., "Available", "Busy", "In a meeting").
+* **Contact Discovery:** Contact list sync (mobile) or handle search query (web).
+
+### 3.2. Real-Time Chat Engine & Message Lifecycle
+* **Delivery States:**
+  1. `PENDING`: Optimistic local rendering with clock icon.
+  2. `SENT`: Single grey checkmark (acknowledged by server).
+  3. `DELIVERED`: Double grey checkmarks (pushed to recipient device).
+  4. `READ`: Double blue checkmarks (recipient entered viewport/opened chat).
+* **Presence & Typing Dynamics:**
+  * Client emits `TYPING_START` on keystroke with a 1.5s debounced timeout triggering `TYPING_STOP`.
+  * Real-time online/offline indicators with "Last seen at [time]" timestamps.
+
+### 3.3. Message Interactions
+* **Quoted Replies (Swipe-to-Reply):** Swiping a bubble right (mobile) or clicking "Reply" (web) embeds an inline preview referencing the target message ID, author, and snippet.
+* **Reactions:** Floating emoji palette on long-press/hover (👍, ❤️, 😂, 😮, 😢, 🙏). Displays as an aggregate badge anchored to the lower bubble edge.
+* **Edit & Revoke:**
+  * Edit permitted within 15 minutes of sending; displays `(edited)` label.
+  * Revocation ("Delete for Everyone") replaces message text with *"This message was deleted"*.
+* **Pinned Messages:** Pin up to 5 messages per conversation; renders as a persistent carousel bar directly below the active chat header.
+
+### 3.4. Rich Media & Attachments
+* **Images/Videos:** Client-side image compression, multi-image collage grids (2x2, 3x3), full-screen lightbox viewer.
+* **Audio Voice Notes:** Push-to-talk recording, waveform rendering, playback speed toggles (1x, 1.5x, 2x).
+* **File Documents:** PDF, DOCX, ZIP transfers displaying filename, file size, and direct download CTA.
+
+---
+
+## 4. Technical Architecture & Data Schemas
+
+### High-Level Architecture
+* **Frontend:** React / Next.js (Web), React Native (Mobile), Tailwind CSS, Lucide Icons, Zustand (State Management).
+* **Backend Gateway:** Node.js / Go WebSocket service for bi-directional messaging, backed by Redis Pub/Sub for horizontal scaling across instances.
+* **REST API:** Stateless services for authentication, media uploads (S3 pre-signed URLs), user profiles, and chat metadata.
+
+### 4.1. PostgreSQL Relational Schema (DDL)
+
+```sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username VARCHAR(50) UNIQUE NOT NULL,
+    display_name VARCHAR(100) NOT NULL,
+    phone_number VARCHAR(20) UNIQUE,
+    avatar_url TEXT,
+    status_text VARCHAR(150) DEFAULT 'Hey there! I am using Pulse.',
+    last_seen_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    is_group BOOLEAN DEFAULT FALSE,
+    title VARCHAR(100),
+    avatar_url TEXT,
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE conversation_participants (
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) DEFAULT 'member', -- 'admin', 'member'
+    joined_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_read_message_id UUID,
+    PRIMARY KEY (conversation_id, user_id)
+);
+
+CREATE TABLE messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+    sender_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    reply_to_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+    content_type VARCHAR(20) DEFAULT 'text', -- 'text', 'image', 'video', 'audio', 'file'
+    content TEXT,
+    media_url TEXT,
+    media_metadata JSONB, -- {"size": 1024, "duration": 15, "width": 800, "height": 600}
+    is_edited BOOLEAN DEFAULT FALSE,
+    is_deleted BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE message_reactions (
+    message_id UUID REFERENCES messages(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    emoji VARCHAR(10) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (message_id, user_id, emoji)
+);
+
+CREATE INDEX idx_messages_conversation_created ON messages(conversation_id, created_at DESC);
+CREATE INDEX idx_participants_user ON conversation_participants(user_id);=========================================
 
 This project CANNOT be deployed on Vercel. This is not a configuration issue —
 it is a fundamental architectural mismatch.
