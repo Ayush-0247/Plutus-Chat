@@ -145,7 +145,7 @@ export const ActiveSessionView = ({
             <button
               id="copy_invite_link_button"
               onClick={handleCopyLink}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border-2 border-indigo-700 hover:bg-indigo-100 text-indigo-950 font-black text-xs transition-colors shadow-[2px_2px_0px_0px_rgba(79,70,229,0.3)] active:translate-x-[1px] active:translate-y-[1px]"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 border-2 border-indigo-700 hover:bg-indigo-100 text-indigo-950 font-black text-xs transition-colors shadow-[2px_2px_0px_0px_rgba(79,70,229,0.3)] active:translate-x-[1px] active:translate-y-[1px]"
             >
               {copiedLink ? (
                 <Check className="w-3.5 h-3.5 text-indigo-700" />
