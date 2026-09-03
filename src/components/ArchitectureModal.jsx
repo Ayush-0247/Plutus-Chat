@@ -64,10 +64,10 @@ export const ArchitectureModal = ({ isOpen, onClose }) => {
               <div className="p-3.5 bg-slate-50 border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] space-y-1.5">
                 <div className="flex items-center gap-2 text-emerald-700 text-xs font-black uppercase">
                   <Database className="w-4 h-4" />
-                  Zero Message / File DB
+                  Zero Message DB
                 </div>
                 <p className="text-xs text-slate-600">
-                  Hard architectural constraint: No messages collection, no files collection, no chat history, and no permanent user accounts.
+                  Hard architectural constraint: No messages collection, no chat history, and no permanent user accounts.
                 </p>
               </div>
 
@@ -87,7 +87,7 @@ export const ArchitectureModal = ({ isOpen, onClose }) => {
                   Hard Destruction & Purge
                 </div>
                 <p className="text-xs text-slate-600">
-                  Owner termination or disconnect initiates a 15s countdown followed by complete deletion of RAM state, temporary files, and database metadata.
+                  Owner termination or disconnect initiates a 15s countdown followed by complete deletion of RAM state and database metadata.
                 </p>
               </div>
             </div>
@@ -121,7 +121,6 @@ export const ArchitectureModal = ({ isOpen, onClose }) => {
                     <li>Active Socket connections & rooms</li>
                     <li>Connected participant list & usernames</li>
                     <li>Real-time message & typing relay</li>
-                    <li>In-memory temporary file buffers</li>
                     <li>Destruction countdown timers</li>
                   </ul>
                 </div>

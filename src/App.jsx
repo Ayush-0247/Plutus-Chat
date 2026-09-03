@@ -11,7 +11,6 @@ import { KickedScreen } from './components/KickedScreen.jsx';
 import { ArchitectureModal } from './components/ArchitectureModal.jsx';
 import {
   playMessageReceivedSound,
-  playFileReceivedSound,
   playUserJoinedSound,
   playUserLeftSound,
 } from './services/soundEffects.js';
@@ -204,14 +203,6 @@ export default function App() {
       }
     };
 
-    // 8b. Receive file (image or PDF) broadcast from server after HTTP upload
-    const handleReceiveFile = (msg) => {
-      setMessages((prev) => [...prev, { ...msg, type: msg.fileType }]);
-      if (activeSessionRef.current && msg.senderId !== activeSessionRef.current.participantId) {
-        playFileReceivedSound();
-      }
-    };
-
     // 9. User typing event
     const handleUserTyping = (data) => {
       const { participantId, username, isTyping } = data;
@@ -267,7 +258,6 @@ export default function App() {
     socket.on('participant-kicked', handleParticipantKicked);
     socket.on('participant-kicked-self', handleKickedSelf);
     socket.on('receive-message', handleReceiveMessage);
-    socket.on('receive-file', handleReceiveFile);
     socket.on('user-typing', handleUserTyping);
     socket.on('session-ending', handleSessionEnding);
     socket.on('session-destroyed', handleSessionDestroyed);
@@ -287,7 +277,6 @@ export default function App() {
       socket.off('participant-kicked', handleParticipantKicked);
       socket.off('participant-kicked-self', handleKickedSelf);
       socket.off('receive-message', handleReceiveMessage);
-      socket.off('receive-file', handleReceiveFile);
       socket.off('user-typing', handleUserTyping);
       socket.off('session-ending', handleSessionEnding);
       socket.off('session-destroyed', handleSessionDestroyed);
@@ -317,11 +306,6 @@ export default function App() {
       text,
       type: 'text',
     });
-  };
-
-  const handleSendFileMessage = (_filePayload) => {
-    // The server broadcasts `receive-file` to all room members directly from
-    // the HTTP upload handler, so no additional socket emit is needed here.
   };
 
   const handleTyping = (isTyping) => {
@@ -418,7 +402,6 @@ export default function App() {
             messages={messages}
             typingUsers={typingUsers}
             onSendMessage={handleSendMessage}
-            onSendFileMessage={handleSendFileMessage}
             onTyping={handleTyping}
             onKickParticipant={handleKickParticipant}
             onLeaveSession={handleLeaveSession}

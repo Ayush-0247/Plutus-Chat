@@ -1,6 +1,6 @@
 {
   "name": "Ephemeral Secure Communication Line",
-  "description": "Owner-controlled ephemeral real-time communication line with cryptographic passkeys, image and PDF local file transfer, and server-authoritative lifecycle destruction.",
+  "description": "Owner-controlled ephemeral real-time communication line with cryptographic passkeys and server-authoritative lifecycle destruction.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

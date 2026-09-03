@@ -12,34 +12,17 @@ import {
   LogOut,
   AlertTriangle,
   Info,
-  Paperclip,
-  Image as ImageIcon,
-  FileText,
-  Download,
-  Eye,
-  UploadCloud,
-  ShieldCheck,
 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import {
   playMessageSentSound,
-  playFileSentSound,
 } from "../services/soundEffects.js";
-import AttachmentModal from "./AttachmentModal.jsx";
-import ImageLightboxModal from "./ImageLightboxModal.jsx";
-import PdfViewerModal from "./PdfViewerModal.jsx";
-import {
-  formatFileSize,
-  getFileDownloadUrl,
-  getFileInlineUrl,
-} from "../services/api.js";
 
 export const ActiveSessionView = ({
   sessionData,
   messages,
   typingUsers,
   onSendMessage,
-  onSendFileMessage,
   onTyping,
   onKickParticipant,
   onLeaveSession,
@@ -53,60 +36,9 @@ export const ActiveSessionView = ({
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [kickTarget, setKickTarget] = useState(null);
 
-  // Phase 2 Attachment & Modals State
-  const [isAttachmentModalOpen, setIsAttachmentModalOpen] = useState(false);
-  const [stagedDroppedFile, setStagedDroppedFile] = useState(null);
-  const [lightboxMessage, setLightboxMessage] = useState(null);
-  const [pdfModalMessage, setPdfModalMessage] = useState(null);
-  const [isDraggingOverChat, setIsDraggingOverChat] = useState(false);
-
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
-  const dragCounterRef = useRef(0);
-
-  // Auto-scroll to bottom of chat
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typingUsers]);
-
-  // Global drag-and-drop listener for the active session view
-  const handleDragEnter = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current += 1;
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      setIsDraggingOverChat(true);
-    }
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current -= 1;
-    if (dragCounterRef.current <= 0) {
-      dragCounterRef.current = 0;
-      setIsDraggingOverChat(false);
-    }
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDraggingOverChat(false);
-    dragCounterRef.current = 0;
-
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      setStagedDroppedFile(file);
-      setIsAttachmentModalOpen(true);
-    }
-  };
 
   // Copy handlers
   const handleCopyId = () => {
@@ -160,44 +92,10 @@ export const ActiveSessionView = ({
     inputRef.current?.focus();
   };
 
-  const handleSendFileCallback = (filePayload) => {
-    if (typeof onSendFileMessage === "function") {
-      onSendFileMessage(filePayload);
-      playFileSentSound();
-    }
-  };
-
   const isOwner = sessionData.isOwner;
 
   return (
-    <div
-      className="w-full h-[670px] box-border px-1 sm:px-2 py-1 sm:py-3 flex flex-col font-mono bg-slate-50 relative"
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      {/* Drag & Drop Fullscreen Dropzone Overlay */}
-      <AnimatePresence>
-        {isDraggingOverChat && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-40 bg-indigo-950/80 backdrop-blur-sm border-4 border-dashed border-indigo-400 m-2 flex flex-col items-center justify-center text-white pointer-events-none"
-          >
-            <div className="p-4 bg-indigo-900/90 rounded-2xl border-2 border-indigo-400 flex flex-col items-center text-center shadow-2xl">
-              <UploadCloud className="w-12 h-12 text-indigo-300 animate-bounce mb-2" />
-              <h3 className="text-base font-black uppercase tracking-wider">
-                Drop to Encrypt & Transfer
-              </h3>
-              <p className="text-xs text-indigo-200 mt-1">
-                Images (Max 10 MB) • PDF Documents (Max 25 MB)
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="w-full h-[670px] box-border px-1 sm:px-2 py-1 sm:py-3 flex flex-col font-mono bg-slate-50 relative">
 
       {/* Top Credentials & Actions Bar */}
       <div className="bg-white border-2 border-slate-900 rounded-none p-3 sm:p-4 mb-3 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
@@ -384,18 +282,12 @@ export const ActiveSessionView = ({
             })}
           </div>
 
-          {/* Sidebar Footer Info (Phase 2 Capabilities) */}
+          {/* Sidebar Footer Info */}
           <div className="pt-3 mt-3 border-t-2 border-slate-200 text-[10px] text-slate-600 font-bold space-y-1">
             <div className="flex items-center justify-between">
               <span>STORAGE MODE:</span>
               <span className="text-emerald-700 font-black">
-                LOCAL DISK + RAM
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>FILE LIMITS:</span>
-              <span className="text-slate-700 font-mono">
-                10MB IMG / 25MB PDF
+                RAM ONLY
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -416,8 +308,7 @@ export const ActiveSessionView = ({
                   Secure Line Connected
                 </p>
                 <p className="max-w-xs mt-1 text-slate-500">
-                  Send a text, or share an encrypted image (Max 10MB) or PDF
-                  (Max 25MB). All files are purged when the session ends.
+                  Send a text to begin secure communication. All messages are ephemeral and destroyed when the session ends.
                 </p>
               </div>
             ) : (
@@ -462,140 +353,16 @@ export const ActiveSessionView = ({
                       <span>{timeString}</span>
                     </div>
 
-                    {/* Image Message Component */}
-                    {m.type === "image" ? (
-                      <div
-                        className={`max-w-[85%] sm:max-w-[340px] p-2 border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] rounded-none ${
-                          isMe
-                            ? "bg-indigo-900 text-white"
-                            : "bg-slate-900 text-white"
-                        }`}
-                      >
-                        {/* Thumbnail Container */}
-                        <div
-                          className="relative rounded overflow-hidden bg-slate-950 cursor-pointer group flex items-center justify-center max-h-56"
-                          onClick={() => setLightboxMessage(m)}
-                        >
-                          <img
-                            src={getFileInlineUrl(
-                              m.fileId,
-                              sessionData.sessionId,
-                              sessionData.participantId,
-                            )}
-                            alt={m.fileName || "Shared Image"}
-                            referrerPolicy="no-referrer"
-                            className="w-full h-auto object-cover max-h-56 group-hover:scale-105 transition-transform duration-200"
-                            loading="lazy"
-                          />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                            <span className="p-2 rounded-lg bg-slate-900/90 text-white hover:bg-slate-800 border border-slate-700 flex items-center gap-1 text-[11px] font-bold">
-                              <Eye className="w-3.5 h-3.5" /> Preview
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* File details & download action */}
-                        <div className="mt-2 flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-800/80">
-                          <div className="truncate pr-2">
-                            <p className="font-mono truncate text-slate-200 font-bold">
-                              {m.fileName || "image.jpg"}
-                            </p>
-                            <p className="text-[10px] text-slate-400">
-                              {formatFileSize(m.fileSize)}
-                            </p>
-                          </div>
-                          <a
-                            href={getFileDownloadUrl(
-                              m.fileId,
-                              sessionData.sessionId,
-                              sessionData.participantId,
-                            )}
-                            download={m.fileName || "image.jpg"}
-                            title="Download original image"
-                            className="shrink-0 p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 transition-colors"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </a>
-                        </div>
-
-                        {/* Optional Image Caption */}
-                        {m.text && (
-                          <p className="mt-1.5 text-xs text-slate-200 bg-slate-950/60 p-2 border border-slate-800 break-words leading-relaxed font-sans">
-                            {m.text}
-                          </p>
-                        )}
-                      </div>
-                    ) : m.type === "pdf" ? (
-                      /* PDF Message Component */
-                      <div
-                        className={`max-w-[88%] sm:max-w-[360px] p-3.5 border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] rounded-none ${
-                          isMe
-                            ? "bg-indigo-950 text-white"
-                            : "bg-slate-900 text-white"
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 rounded bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0 mt-0.5">
-                            <FileText className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-slate-100 truncate font-mono">
-                              {m.fileName || "document.pdf"}
-                            </p>
-                            <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400 font-mono">
-                              <span className="px-1 py-0.2 rounded bg-rose-500/30 text-rose-300 font-bold">
-                                PDF
-                              </span>
-                              <span>•</span>
-                              <span>{formatFileSize(m.fileSize)}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Action buttons: Open PDF and Download */}
-                        <div className="mt-3 flex items-center gap-2 pt-2 border-t border-slate-800">
-                          <button
-                            id={`open_pdf_${m.fileId}`}
-                            onClick={() => setPdfModalMessage(m)}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition-colors"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-blue-400" />
-                            <span>Preview</span>
-                          </button>
-                          <a
-                            id={`download_pdf_${m.fileId}`}
-                            href={getFileDownloadUrl(
-                              m.fileId,
-                              sessionData.sessionId,
-                              sessionData.participantId,
-                            )}
-                            download={m.fileName || "document.pdf"}
-                            className="flex items-center justify-center gap-1 py-1.5 px-3 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-[11px] font-bold transition-colors"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Download</span>
-                          </a>
-                        </div>
-
-                        {/* Optional PDF Caption */}
-                        {m.text && (
-                          <p className="mt-2 text-xs text-slate-200 bg-slate-950/60 p-2 border border-slate-800 break-words leading-relaxed font-sans">
-                            {m.text}
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      /* Standard Text Message */
-                      <div
-                        className={`max-w-[85%] sm:max-w-[75%] px-4 py-2.5 text-xs break-words leading-relaxed border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] ${
-                          isMe
-                            ? "bg-indigo-600 text-white font-medium"
-                            : "bg-white text-slate-900 font-medium"
-                        }`}
-                      >
-                        {m.text}
-                      </div>
-                    )}
+                    {/* Standard Text Message */}
+                    <div
+                      className={`max-w-[85%] sm:max-w-[75%] px-4 py-2.5 text-xs break-words leading-relaxed border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] ${
+                        isMe
+                          ? "bg-indigo-600 text-white font-medium"
+                          : "bg-white text-slate-900 font-medium"
+                      }`}
+                    >
+                      {m.text}
+                    </div>
                   </div>
                 );
               })
@@ -615,33 +382,18 @@ export const ActiveSessionView = ({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Message Input Bar with Attachment Trigger */}
+          {/* Message Input Bar */}
           <form
             onSubmit={handleSend}
             className="p-3 border-t-2 border-slate-900 bg-white"
           >
             <div className="flex items-center gap-2">
-              {/* Attachment Button */}
-              <button
-                id="open_attachment_modal_button"
-                type="button"
-                onClick={() => {
-                  setStagedDroppedFile(null);
-                  setIsAttachmentModalOpen(true);
-                }}
-                title="Send encrypted Image (Max 10MB) or PDF (Max 25MB)"
-                className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 border-2 border-slate-900 text-slate-800 font-bold text-xs transition-colors flex items-center gap-1 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-x-[1px] active:translate-y-[1px]"
-              >
-                <Paperclip className="w-4 h-4 text-indigo-600" />
-                <span className="hidden sm:inline">Attach</span>
-              </button>
-
               <input
                 ref={inputRef}
                 type="text"
                 value={inputText}
                 onChange={handleInputChange}
-                placeholder="Type real-time message, or attach file... (Enter to send)"
+                placeholder="Type real-time message... (Enter to send)"
                 maxLength={2000}
                 autoFocus
                 className="flex-1 px-4 py-2.5 bg-slate-50 border-2 border-slate-900 focus:border-indigo-600 focus:bg-white text-slate-900 placeholder-slate-400 text-xs font-mono focus:outline-none shadow-inner"
@@ -661,37 +413,6 @@ export const ActiveSessionView = ({
         </div>
       </div>
 
-      {/* Attachment Upload Modal */}
-      <AttachmentModal
-        isOpen={isAttachmentModalOpen}
-        onClose={() => {
-          setIsAttachmentModalOpen(false);
-          setStagedDroppedFile(null);
-        }}
-        sessionId={sessionData.sessionId}
-        participantId={sessionData.participantId}
-        onSendFileMessage={handleSendFileCallback}
-        initialFile={stagedDroppedFile}
-      />
-
-      {/* Image Lightbox Viewer Modal */}
-      <ImageLightboxModal
-        isOpen={Boolean(lightboxMessage)}
-        onClose={() => setLightboxMessage(null)}
-        message={lightboxMessage}
-        sessionId={sessionData.sessionId}
-        participantId={sessionData.participantId}
-      />
-
-      {/* PDF Viewer Modal */}
-      <PdfViewerModal
-        isOpen={Boolean(pdfModalMessage)}
-        onClose={() => setPdfModalMessage(null)}
-        message={pdfModalMessage}
-        sessionId={sessionData.sessionId}
-        participantId={sessionData.participantId}
-      />
-
       {/* Confirmation Modal: Owner End Session */}
       {showEndConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
@@ -709,7 +430,7 @@ export const ActiveSessionView = ({
             <p className="text-xs text-slate-600 leading-relaxed mb-5">
               This will initiate a 15-second countdown, disconnect all{" "}
               {sessionData.participants.length} participants, and permanently
-              purge all messages and uploaded files from disk and memory.
+              purge all messages from memory.
             </p>
             <div className="flex items-center justify-end gap-3">
               <button
