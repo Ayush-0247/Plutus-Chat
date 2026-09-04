@@ -48,6 +48,9 @@ export const ActiveSessionView = ({
   onSendFile,
   onCancelFileTransfer,
   fileTransfers = [],
+  incomingCall = null,
+  onAcceptCall,
+  onDeclineCall,
 }) => {
   const [inputText, setInputText] = useState("");
   const [copiedId, setCopiedId] = useState(false);
@@ -352,6 +355,45 @@ export const ActiveSessionView = ({
 
         {/* Real-time Chat Section */}
         <div className="flex-1 flex flex-col bg-white border-2 border-slate-900 rounded-none overflow-hidden shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
+          {/* Incoming Call In-Session Banner (Joiner notification) */}
+          {incomingCall && !isOwner && callState !== 'ACTIVE' && (
+            <div className="bg-amber-300 border-b-2 border-slate-900 px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-[0_2px_0px_0px_rgba(15,23,42,1)] z-20">
+              <div className="flex items-center gap-3">
+                <span className="relative flex h-3.5 w-3.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-600 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-indigo-700"></span>
+                </span>
+                <div>
+                  <div className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-1.5">
+                    {incomingCall.callType === 'video' ? <Video className="w-3.5 h-3.5 text-indigo-800" /> : <Phone className="w-3.5 h-3.5 text-emerald-800" />}
+                    <span>INCOMING {incomingCall.callType === 'video' ? 'VIDEO' : 'AUDIO'} CALL</span>
+                  </div>
+                  <span className="block text-[11px] text-slate-800 font-bold">
+                    {incomingCall.callerName || 'Session Owner'} is calling the session
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  id="banner_decline_call_button"
+                  onClick={onDeclineCall}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 border-2 border-slate-900 text-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-x-[1px] active:translate-y-[1px]"
+                >
+                  Decline
+                </button>
+                <button
+                  id="banner_accept_call_button"
+                  onClick={onAcceptCall}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 border-2 border-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-colors shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-x-[1px] active:translate-y-[1px]"
+                >
+                  {incomingCall.callType === 'video' ? <Video className="w-3.5 h-3.5" /> : <Phone className="w-3.5 h-3.5" />}
+                  <span>Accept & Join</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Phase 3: Active P2P WebRTC Video / Audio Call Window */}
           {(callState === 'ACTIVE' || (callState === 'INVITING' && isOwner)) && (
             <CallWindow

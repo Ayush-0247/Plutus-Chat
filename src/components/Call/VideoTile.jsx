@@ -16,6 +16,7 @@ export const VideoTile = ({
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
 
       const checkVideo = () => {
         const videoTracks = stream.getVideoTracks();

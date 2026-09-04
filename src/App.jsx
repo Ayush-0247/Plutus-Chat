@@ -68,17 +68,30 @@ export default function App() {
   const typingMapRef = useRef(new Map());
   const meshManagerRef = useRef(null);
   const localStreamRef = useRef(null);
+  const callStateRef = useRef('IDLE');
+  const activeCallIdRef = useRef(null);
 
-  // Synchronize localStreamRef
+  // Synchronize localStreamRef and callStateRef
   useEffect(() => {
     localStreamRef.current = localStream;
   }, [localStream]);
 
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
+
+  useEffect(() => {
+    activeCallIdRef.current = activeCallId;
+  }, [activeCallId]);
+
   // Teardown calling & media helper
   const teardownCallState = useCallback(() => {
+    callStateRef.current = 'IDLE';
+    activeCallIdRef.current = null;
     if (localStreamRef.current) {
       stopAllTracks(localStreamRef.current);
       setLocalStream(null);
+      localStreamRef.current = null;
     }
     if (meshManagerRef.current) {
       meshManagerRef.current.cleanupCall();
@@ -221,6 +234,14 @@ export default function App() {
         },
       ]);
       setUiState('ACTIVE');
+
+      // If a call is already active on the session when joiner enters, prompt them to join
+      if (data.activeCall && !data.isOwner) {
+        setIncomingCall(data.activeCall);
+        try {
+          playCallIncomingSound();
+        } catch (e) {}
+      }
     };
 
     // 3. Join error
@@ -355,17 +376,39 @@ export default function App() {
 
     // 10. WebRTC Call Invitation
     const handleCallInvite = (inviteData) => {
+      console.log('[WebRTC Call] Received incoming call-invite:', inviteData);
       // If user is already in call, ignore
       if (callState === 'ACTIVE') return;
 
       setIncomingCall(inviteData);
-      playCallIncomingSound();
+      try {
+        playCallIncomingSound();
+      } catch (e) {}
+
+      // Add prominent system notification in chat feed
+      setMessages((prev) => [
+        ...prev,
+        {
+          messageId: `call-invite-${Date.now()}`,
+          senderId: 'SYSTEM',
+          senderName: 'SYSTEM',
+          isOwner: false,
+          text: `Incoming ${inviteData.callType === 'video' ? 'Video' : 'Audio'} Call initiated by ${inviteData.callerName || 'Session Owner'}.`,
+          timestamp: Date.now(),
+          isSystem: true,
+        },
+      ]);
     };
 
     // 11. WebRTC Remote User Joined Call
     const handleCallUserJoined = (data) => {
-      // If we are currently in this call, initialize peer connection with new participant
-      if (callState === 'ACTIVE' && localStreamRef.current && meshManagerRef.current) {
+      console.log('[WebRTC Call] Remote user joined call:', data);
+      const isCallActive = callStateRef.current === 'ACTIVE' || callStateRef.current === 'INVITING';
+      if (isCallActive && meshManagerRef.current) {
+        if (callStateRef.current === 'INVITING') {
+          setCallState('ACTIVE');
+          callStateRef.current = 'ACTIVE';
+        }
         meshManagerRef.current.initiateCallPeerConnection(data.participantId, data.callId);
       }
     };
@@ -553,6 +596,7 @@ export default function App() {
 
     try {
       setCallState('INVITING');
+      callStateRef.current = 'INVITING';
       setCallType(type);
 
       const { stream, fallbackToAudio } = await acquireMediaStream({
@@ -561,6 +605,7 @@ export default function App() {
       });
 
       setLocalStream(stream);
+      localStreamRef.current = stream;
       if (fallbackToAudio) {
         setCallWarning('Camera permission denied or unavailable. Fallback to audio call active.');
       } else {
@@ -578,7 +623,9 @@ export default function App() {
         (res) => {
           if (res?.success) {
             setActiveCallId(res.callId);
+            activeCallIdRef.current = res.callId;
             setCallState('ACTIVE');
+            callStateRef.current = 'ACTIVE';
             if (meshManagerRef.current) {
               meshManagerRef.current.setupCallConnections(res.callId, stream, res.callParticipants || []);
             }
@@ -609,6 +656,7 @@ export default function App() {
       });
 
       setLocalStream(stream);
+      localStreamRef.current = stream;
       if (fallbackToAudio) {
         setCallWarning('Camera permission denied. Joined with audio only.');
       }
@@ -616,7 +664,9 @@ export default function App() {
       const targetCallId = incomingCall.callId;
       setIncomingCall(null);
       setActiveCallId(targetCallId);
+      activeCallIdRef.current = targetCallId;
       setCallState('ACTIVE');
+      callStateRef.current = 'ACTIVE';
 
       const socket = getSocket();
       socket.emit(
@@ -824,6 +874,9 @@ export default function App() {
             onSendFile={handleSendFile}
             onCancelFileTransfer={handleCancelFileTransfer}
             fileTransfers={fileTransfers}
+            incomingCall={incomingCall}
+            onAcceptCall={handleAcceptCall}
+            onDeclineCall={handleDeclineCall}
           />
         )}
 
@@ -847,6 +900,7 @@ export default function App() {
       {incomingCall && (
         <CallInvitationModal
           isOpen={Boolean(incomingCall)}
+          invitation={incomingCall}
           callerName={incomingCall.callerName}
           callType={incomingCall.callType}
           onAccept={handleAcceptCall}

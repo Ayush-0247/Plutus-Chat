@@ -401,6 +401,12 @@ io.on('connection', (socket) => {
         username: reqUsername,
         isOwner,
         participants: participantsList,
+        activeCall: session.activeCall ? {
+          callId: session.activeCall.callId,
+          callType: session.activeCall.callType,
+          callerName: session.participants.get(session.activeCall.initiatedBy)?.username || 'Session Owner',
+          callerId: session.activeCall.initiatedBy,
+        } : null,
       };
 
       if (typeof callback === 'function') callback(successRes);
@@ -719,12 +725,21 @@ io.on('connection', (socket) => {
       const room = getSessionRoom(normId);
       const owner = session.participants.get(participantId);
 
-      // Broadcast invitation to all other session participants
-      socket.to(room).emit('call-invite', {
+      const invitePayload = {
         callId,
         callType,
         callerName: owner ? owner.username : 'Session Owner',
         callerId: participantId,
+      };
+
+      // Broadcast invitation to all other session participants in the room
+      socket.to(room).emit('call-invite', invitePayload);
+
+      // Also ensure direct delivery to each participant's socket ID in case room registration was lagging
+      session.participants.forEach((p) => {
+        if (p.participantId !== participantId && p.socketId && p.socketId !== socket.id) {
+          io.to(p.socketId).emit('call-invite', invitePayload);
+        }
       });
 
       if (typeof callback === 'function') {
@@ -763,12 +778,20 @@ io.on('connection', (socket) => {
       if (accept) {
         session.activeCall.participants.add(participantId);
 
-        io.to(room).emit('call-user-joined', {
+        const joinedPayload = {
           callId,
           participantId,
           username: participant.username,
           callParticipants: Array.from(session.activeCall.participants),
-        });
+        };
+
+        io.to(room).emit('call-user-joined', joinedPayload);
+
+        // Also ensure direct delivery to session owner
+        const owner = session.participants.get(session.ownerParticipantId);
+        if (owner && owner.socketId && owner.socketId !== socket.id) {
+          io.to(owner.socketId).emit('call-user-joined', joinedPayload);
+        }
 
         if (typeof callback === 'function') {
           callback({
@@ -779,15 +802,12 @@ io.on('connection', (socket) => {
       } else {
         // Decline: Notify owner (PRD Section 24)
         const owner = session.participants.get(session.ownerParticipantId);
-        if (owner) {
-          const ownerSocket = io.sockets.sockets.get(owner.socketId);
-          if (ownerSocket) {
-            ownerSocket.emit('call-user-declined', {
-              callId,
-              participantId,
-              username: participant.username,
-            });
-          }
+        if (owner && owner.socketId) {
+          io.to(owner.socketId).emit('call-user-declined', {
+            callId,
+            participantId,
+            username: participant.username,
+          });
         }
         if (typeof callback === 'function') callback({ success: true, declined: true });
       }
@@ -873,9 +893,8 @@ io.on('connection', (socket) => {
     if (!session.participants.has(senderId) || !session.participants.has(targetId)) return;
 
     const targetUser = session.participants.get(targetId);
-    const targetSocket = io.sockets.sockets.get(targetUser?.socketId);
-    if (targetSocket) {
-      targetSocket.emit('webrtc-offer', {
+    if (targetUser && targetUser.socketId) {
+      io.to(targetUser.socketId).emit('webrtc-offer', {
         senderId,
         offer,
         callId,
@@ -893,9 +912,8 @@ io.on('connection', (socket) => {
     if (!session.participants.has(senderId) || !session.participants.has(targetId)) return;
 
     const targetUser = session.participants.get(targetId);
-    const targetSocket = io.sockets.sockets.get(targetUser?.socketId);
-    if (targetSocket) {
-      targetSocket.emit('webrtc-answer', {
+    if (targetUser && targetUser.socketId) {
+      io.to(targetUser.socketId).emit('webrtc-answer', {
         senderId,
         answer,
         callId,
@@ -913,9 +931,8 @@ io.on('connection', (socket) => {
     if (!session.participants.has(senderId) || !session.participants.has(targetId)) return;
 
     const targetUser = session.participants.get(targetId);
-    const targetSocket = io.sockets.sockets.get(targetUser?.socketId);
-    if (targetSocket) {
-      targetSocket.emit('webrtc-ice-candidate', {
+    if (targetUser && targetUser.socketId) {
+      io.to(targetUser.socketId).emit('webrtc-ice-candidate', {
         senderId,
         candidate,
         callId,

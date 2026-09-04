@@ -371,6 +371,78 @@ export class WebRTCMeshManager {
   // ==========================================
 
   /**
+   * Helper to retrieve or lazily create a Call RTCPeerConnection,
+   * binding local media tracks and event handlers.
+   */
+  getOrCreateCallPeerConnection(peerId, callId) {
+    let pc = this.callPeerConnections.get(peerId);
+    if (pc) {
+      // If localCallStream exists and pc has no audio/video tracks attached yet, attach them
+      if (this.localCallStream && pc.getSenders().length === 0) {
+        this.localCallStream.getTracks().forEach((track) => {
+          try {
+            pc.addTrack(track, this.localCallStream);
+          } catch (e) {
+            console.warn('[WebRTC Call] Error adding track to existing pc:', e);
+          }
+        });
+      }
+      return pc;
+    }
+
+    pc = new RTCPeerConnection(RTC_CONFIG);
+    this.callPeerConnections.set(peerId, pc);
+
+    // Attach all local tracks
+    if (this.localCallStream) {
+      this.localCallStream.getTracks().forEach((track) => {
+        try {
+          pc.addTrack(track, this.localCallStream);
+        } catch (e) {
+          console.warn('[WebRTC Call] Error adding track:', e);
+        }
+      });
+    }
+
+    // Handle incoming remote media tracks
+    pc.ontrack = (event) => {
+      console.log(`[WebRTC Call] ontrack fired for peer ${peerId} (${event.track?.kind})`);
+      let stream = event.streams && event.streams[0];
+      if (!stream) {
+        stream = new MediaStream([event.track]);
+      }
+      if (this.onRemoteStream) {
+        this.onRemoteStream(peerId, stream);
+      }
+    };
+
+    // Relay local ICE candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.socket.emit('webrtc-ice-candidate', {
+          sessionId: this.sessionId,
+          senderId: this.participantId,
+          targetId: peerId,
+          candidate: event.candidate,
+          callId: callId || this.currentCallId,
+          scope: 'call',
+        });
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC Call] Connection state with ${peerId}: ${pc.connectionState}`);
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        if (this.onRemoteStreamRemoved) {
+          this.onRemoteStreamRemoved(peerId);
+        }
+      }
+    };
+
+    return pc;
+  }
+
+  /**
    * Joins or starts the call with a local MediaStream.
    * Connects to all other call participants in the call.
    */
@@ -380,110 +452,67 @@ export class WebRTCMeshManager {
 
     // Filter out self
     const remoteParticipants = callParticipants.filter((id) => id !== this.participantId);
+    console.log(`[WebRTC Call] setupCallConnections for self (${this.participantId}), peers:`, remoteParticipants);
 
     for (const peerId of remoteParticipants) {
-      if (!this.callPeerConnections.has(peerId)) {
-        await this.initiateCallPeerConnection(peerId, callId);
-      }
+      await this.initiateCallPeerConnection(peerId, callId);
     }
   }
 
+  /**
+   * Deterministic initiator pattern:
+   * Only the participant with the lexicographically smaller ID initiates the offer.
+   * The participant with the larger ID creates the peer connection and awaits the offer.
+   * This completely prevents WebRTC glare (offer collision).
+   */
   async initiateCallPeerConnection(peerId, callId) {
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-    this.callPeerConnections.set(peerId, pc);
+    if (!peerId || peerId === this.participantId) return;
 
-    // Add local tracks to peer connection
-    if (this.localCallStream) {
-      this.localCallStream.getTracks().forEach((track) => {
-        pc.addTrack(track, this.localCallStream);
-      });
-    }
+    const pc = this.getOrCreateCallPeerConnection(peerId, callId);
 
-    // Handle remote tracks
-    pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        if (this.onRemoteStream) {
-          this.onRemoteStream(peerId, event.streams[0]);
-        }
-      }
-    };
+    if (this.participantId < peerId) {
+      console.log(`[WebRTC Call] ${this.participantId} is initiator (< ${peerId}), sending offer`);
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        this.socket.emit('webrtc-ice-candidate', {
+        this.socket.emit('webrtc-offer', {
           sessionId: this.sessionId,
           senderId: this.participantId,
           targetId: peerId,
-          candidate: event.candidate,
-          callId,
+          offer: pc.localDescription,
+          callId: callId || this.currentCallId,
           scope: 'call',
         });
+      } catch (err) {
+        console.error(`[WebRTC Call] Error creating offer for ${peerId}:`, err);
       }
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-        if (this.onRemoteStreamRemoved) {
-          this.onRemoteStreamRemoved(peerId);
-        }
-      }
-    };
-
-    // Deterministic offer creation: newly joined participant or lexicographically lower ID initiates
-    // To ensure negotiation happens cleanly:
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    this.socket.emit('webrtc-offer', {
-      sessionId: this.sessionId,
-      senderId: this.participantId,
-      targetId: peerId,
-      offer: pc.localDescription,
-      callId,
-      scope: 'call',
-    });
+    } else {
+      console.log(`[WebRTC Call] ${this.participantId} is receiver (> ${peerId}), ready and awaiting offer`);
+    }
   }
 
+  /**
+   * Handles incoming offer with W3C Perfect Negotiation / Polite Peer pattern.
+   */
   async handleCallOffer(senderId, offer, callId) {
-    let pc = this.callPeerConnections.get(senderId);
-    if (!pc) {
-      pc = new RTCPeerConnection(RTC_CONFIG);
-      this.callPeerConnections.set(senderId, pc);
+    console.log(`[WebRTC Call] Handling incoming offer from ${senderId} to ${this.participantId}`);
+    const pc = this.getOrCreateCallPeerConnection(senderId, callId);
 
-      if (this.localCallStream) {
-        this.localCallStream.getTracks().forEach((track) => {
-          pc.addTrack(track, this.localCallStream);
-        });
+    const isPolite = this.participantId > senderId;
+    const isOfferCollision = pc.signalingState !== 'stable';
+
+    if (isOfferCollision) {
+      if (!isPolite) {
+        console.warn(`[WebRTC Call] Impolite peer (${this.participantId}) ignoring offer collision from ${senderId}`);
+        return;
       }
-
-      pc.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-          if (this.onRemoteStream) {
-            this.onRemoteStream(senderId, event.streams[0]);
-          }
-        }
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          this.socket.emit('webrtc-ice-candidate', {
-            sessionId: this.sessionId,
-            senderId: this.participantId,
-            targetId: senderId,
-            candidate: event.candidate,
-            callId,
-            scope: 'call',
-          });
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-          if (this.onRemoteStreamRemoved) {
-            this.onRemoteStreamRemoved(senderId);
-          }
-        }
-      };
+      console.log(`[WebRTC Call] Polite peer (${this.participantId}) rolling back local offer for ${senderId}`);
+      try {
+        await pc.setLocalDescription({ type: 'rollback' });
+      } catch (e) {
+        console.warn('[WebRTC Call] Rollback notice:', e);
+      }
     }
 
     try {
@@ -505,9 +534,10 @@ export class WebRTCMeshManager {
         senderId: this.participantId,
         targetId: senderId,
         answer: pc.localDescription,
-        callId,
+        callId: callId || this.currentCallId,
         scope: 'call',
       });
+      console.log(`[WebRTC Call] Sent answer to ${senderId}`);
     } catch (err) {
       console.error(`[WebRTC Call] Error answering offer from ${senderId}:`, err);
     }

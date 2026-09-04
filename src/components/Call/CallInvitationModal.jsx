@@ -5,22 +5,37 @@ import { playIncomingCallSound } from '../../services/soundEffects.js';
 
 export const CallInvitationModal = ({
   invitation,
+  callerName,
+  callType,
+  isOpen = true,
   onAccept,
   onDecline,
 }) => {
   useEffect(() => {
     // Play initial ringtone and loop every 2.5 seconds while open
-    playIncomingCallSound();
-    const interval = setInterval(() => {
+    try {
       playIncomingCallSound();
+    } catch (e) {
+      // Audio autoplay policy
+    }
+    const interval = setInterval(() => {
+      try {
+        playIncomingCallSound();
+      } catch (e) {
+        // Audio autoplay policy
+      }
     }, 2500);
 
     return () => clearInterval(interval);
   }, []);
 
-  if (!invitation) return null;
+  if (!isOpen) return null;
 
-  const isVideo = invitation.callType === 'video';
+  const resolvedInvitation = invitation || (callerName ? { callerName, callType } : null);
+  if (!resolvedInvitation) return null;
+
+  const isVideo = (resolvedInvitation.callType || callType) === 'video';
+  const displayName = resolvedInvitation.callerName || callerName || 'Session Owner';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm font-mono">
@@ -46,7 +61,7 @@ export const CallInvitationModal = ({
         </div>
 
         <h3 className="text-lg font-black text-slate-900 tracking-tight mb-2">
-          {invitation.callerName || 'Session Owner'}
+          {displayName}
         </h3>
 
         <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-400 border border-slate-900 text-slate-900 text-[10px] font-black uppercase mb-5">
