@@ -1,7 +1,10 @@
 {
   "name": "Ephemeral Secure Communication Line",
   "description": "Owner-controlled ephemeral real-time communication line with cryptographic passkeys and server-authoritative lifecycle destruction.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

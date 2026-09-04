@@ -5,7 +5,7 @@ let socket = null;
 
 const SERVER_URL =
   import.meta.env.VITE_SERVER_URL ||
-  (import.meta.env.PROD ? window.location.origin : 'http://localhost:3000');
+  (typeof window !== 'undefined' ? window.location.origin : '');
 
 export function getSocket() {
   if (!socket) {

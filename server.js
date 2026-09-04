@@ -35,7 +35,7 @@ const io = new Server(httpServer, {
   },
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 
 // RAM-Only Ephemeral State
 // Map sessionId -> { ownerSocketId, participants: Map, bannedParticipantIds: Set, destroyAt, warningDurationMs, countdownDurationMs, destroyTimeoutId, status, endingReason }
@@ -105,6 +105,14 @@ async function executeHardDestruction(sessionId) {
   const room = getSessionRoom(normId);
 
   // 1. Broadcast terminal destruction event to connected clients
+  if (session && session.activeCall) {
+    io.to(room).emit('call-ended', {
+      callId: session.activeCall.callId,
+      reason: 'Session destroyed. All call channels closed.',
+    });
+    session.activeCall = null;
+  }
+
   io.to(room).emit('session-destroyed', {
     sessionId: normId,
     message: 'Session destroyed. All state and metadata have been completely purged.',
@@ -211,6 +219,18 @@ app.get('/api/session/:sessionId/check', async (req, res) => {
   }
 });
 
+// Route-level fallback: handle database queries failing gracefully when MongoDB is offline
+app.use((err, req, res, next) => {
+  if (err.name === 'MongooseError' || err.name === 'MongoNetworkError' || (err.message && err.message.includes('buffering timed out'))) {
+    console.warn('[AI Studio] Database offline — returning mock empty response');
+    if (req.method === 'GET') {
+      return res.json(req.path.endsWith('s') || req.path.endsWith('s/') ? [] : {});
+    }
+    return res.status(503).json({ error: 'Service temporarily unavailable (database offline)' });
+  }
+  next(err);
+});
+
 // --- Socket.IO Event Handlers ---
 io.on('connection', (socket) => {
   // 1. Create Session (Owner)
@@ -251,6 +271,7 @@ io.on('connection', (socket) => {
         warningDurationMs: 5000,
         countdownDurationMs: 10000,
         destroyTimeoutId: null,
+        activeCall: null,
       };
 
       const ownerParticipant = {
@@ -514,7 +535,17 @@ io.on('connection', (socket) => {
         socketToParticipant.delete(target.socketId);
       }
 
-      // 3. Remove from active participants
+      // 3. Remove from active participants & active call
+      if (session.activeCall && session.activeCall.participants.has(targetParticipantId)) {
+        session.activeCall.participants.delete(targetParticipantId);
+        io.to(room).emit('call-user-left', {
+          callId: session.activeCall.callId,
+          participantId: targetParticipantId,
+          username: target.username,
+          callParticipants: Array.from(session.activeCall.participants),
+        });
+      }
+
       session.participants.delete(targetParticipantId);
       const updatedList = getParticipantsArray(session);
 
@@ -543,8 +574,26 @@ io.on('connection', (socket) => {
         if (participant) {
           // If owner leaves voluntarily, initiate session termination!
           if (participant.isOwner) {
+            if (session.activeCall) {
+              const room = getSessionRoom(normId);
+              io.to(room).emit('call-ended', {
+                callId: session.activeCall.callId,
+                reason: 'Session owner left the session.',
+              });
+              session.activeCall = null;
+            }
             await initiateSessionDestruction(normId, 'OWNER_LEFT');
           } else {
+            if (session.activeCall && session.activeCall.participants.has(participantId)) {
+              session.activeCall.participants.delete(participantId);
+              const room = getSessionRoom(normId);
+              io.to(room).emit('call-user-left', {
+                callId: session.activeCall.callId,
+                participantId,
+                username: participant.username,
+                callParticipants: Array.from(session.activeCall.participants),
+              });
+            }
             session.participants.delete(participantId);
             const room = getSessionRoom(normId);
             socket.leave(room);
@@ -605,14 +654,272 @@ io.on('connection', (socket) => {
 
     // Check if the disconnected user is the Owner of an ACTIVE session
     if (participant.isOwner && session.status === 'ACTIVE') {
+      if (session.activeCall) {
+        const room = getSessionRoom(normId);
+        io.to(room).emit('call-ended', {
+          callId: session.activeCall.callId,
+          reason: 'Session owner disconnected.',
+        });
+        session.activeCall = null;
+      }
       await initiateSessionDestruction(normId, 'OWNER_LEFT');
     } else if (!participant.isOwner && session.status === 'ACTIVE') {
+      if (session.activeCall && session.activeCall.participants.has(participantId)) {
+        session.activeCall.participants.delete(participantId);
+        const room = getSessionRoom(normId);
+        io.to(room).emit('call-user-left', {
+          callId: session.activeCall.callId,
+          participantId,
+          username: participant.username,
+          callParticipants: Array.from(session.activeCall.participants),
+        });
+      }
       session.participants.delete(participantId);
       const room = getSessionRoom(normId);
       io.to(room).emit('participant-left', {
         participantId,
         username: participant.username,
         participants: getParticipantsArray(session),
+      });
+    }
+  });
+
+  // 9. WebRTC Start Call (Owner Only - PRD Section 13)
+  socket.on('start-call', (payload = {}, callback) => {
+    try {
+      const { sessionId, participantId, callType = 'video' } = payload;
+      const normId = sessionId?.toUpperCase();
+      const session = sessions.get(normId);
+
+      if (!session || session.status !== 'ACTIVE') {
+        if (typeof callback === 'function') callback({ success: false, message: 'Session is not active.' });
+        return;
+      }
+
+      if (participantId !== session.ownerParticipantId) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Unauthorized: Only the session owner can initiate a call.' });
+        return;
+      }
+
+      if (session.activeCall) {
+        if (typeof callback === 'function') callback({ success: false, message: 'A call is already in progress.' });
+        return;
+      }
+
+      const callId = crypto.randomUUID();
+      session.activeCall = {
+        callId,
+        callType,
+        initiatedBy: participantId,
+        participants: new Set([participantId]),
+        status: 'ACTIVE',
+        startedAt: Date.now(),
+      };
+
+      const room = getSessionRoom(normId);
+      const owner = session.participants.get(participantId);
+
+      // Broadcast invitation to all other session participants
+      socket.to(room).emit('call-invite', {
+        callId,
+        callType,
+        callerName: owner ? owner.username : 'Session Owner',
+        callerId: participantId,
+      });
+
+      if (typeof callback === 'function') {
+        callback({
+          success: true,
+          callId,
+          callType,
+          callParticipants: [participantId],
+        });
+      }
+    } catch (err) {
+      if (typeof callback === 'function') callback({ success: false, message: 'Error starting call' });
+    }
+  });
+
+  // 10. WebRTC Call Response (Joiner Accept / Decline - PRD Section 16 & 24)
+  socket.on('call-response', (payload = {}, callback) => {
+    try {
+      const { sessionId, participantId, callId, accept } = payload;
+      const normId = sessionId?.toUpperCase();
+      const session = sessions.get(normId);
+
+      if (!session || !session.activeCall || session.activeCall.callId !== callId) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Call no longer active.' });
+        return;
+      }
+
+      const participant = session.participants.get(participantId);
+      if (!participant) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Participant not in session.' });
+        return;
+      }
+
+      const room = getSessionRoom(normId);
+
+      if (accept) {
+        session.activeCall.participants.add(participantId);
+
+        io.to(room).emit('call-user-joined', {
+          callId,
+          participantId,
+          username: participant.username,
+          callParticipants: Array.from(session.activeCall.participants),
+        });
+
+        if (typeof callback === 'function') {
+          callback({
+            success: true,
+            callParticipants: Array.from(session.activeCall.participants),
+          });
+        }
+      } else {
+        // Decline: Notify owner (PRD Section 24)
+        const owner = session.participants.get(session.ownerParticipantId);
+        if (owner) {
+          const ownerSocket = io.sockets.sockets.get(owner.socketId);
+          if (ownerSocket) {
+            ownerSocket.emit('call-user-declined', {
+              callId,
+              participantId,
+              username: participant.username,
+            });
+          }
+        }
+        if (typeof callback === 'function') callback({ success: true, declined: true });
+      }
+    } catch (err) {
+      if (typeof callback === 'function') callback({ success: false, message: 'Error responding to call' });
+    }
+  });
+
+  // 11. WebRTC Leave Call (Joiner or Owner - PRD Section 21 & 23)
+  socket.on('leave-call', (payload = {}, callback) => {
+    try {
+      const { sessionId, participantId, callId } = payload;
+      const normId = sessionId?.toUpperCase();
+      const session = sessions.get(normId);
+
+      if (!session || !session.activeCall || session.activeCall.callId !== callId) {
+        if (typeof callback === 'function') callback({ success: true });
+        return;
+      }
+
+      const participant = session.participants.get(participantId);
+      const room = getSessionRoom(normId);
+
+      // If owner leaves: PRD Section 23 dictates call ends for everyone
+      if (participantId === session.ownerParticipantId) {
+        io.to(room).emit('call-ended', {
+          callId,
+          reason: 'Session owner left the call.',
+        });
+        session.activeCall = null;
+      } else {
+        session.activeCall.participants.delete(participantId);
+        io.to(room).emit('call-user-left', {
+          callId,
+          participantId,
+          username: participant ? participant.username : 'Participant',
+          callParticipants: Array.from(session.activeCall.participants),
+        });
+      }
+
+      if (typeof callback === 'function') callback({ success: true });
+    } catch (err) {
+      if (typeof callback === 'function') callback({ success: false });
+    }
+  });
+
+  // 12. WebRTC End Call (Owner Only - PRD Section 22)
+  socket.on('end-call', (payload = {}, callback) => {
+    try {
+      const { sessionId, participantId, callId } = payload;
+      const normId = sessionId?.toUpperCase();
+      const session = sessions.get(normId);
+
+      if (!session || !session.activeCall) {
+        if (typeof callback === 'function') callback({ success: true });
+        return;
+      }
+
+      if (participantId !== session.ownerParticipantId) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Unauthorized: Only owner can end call for everyone.' });
+        return;
+      }
+
+      const room = getSessionRoom(normId);
+      io.to(room).emit('call-ended', {
+        callId: session.activeCall.callId,
+        reason: 'Session owner ended the call for everyone.',
+      });
+      session.activeCall = null;
+
+      if (typeof callback === 'function') callback({ success: true });
+    } catch (err) {
+      if (typeof callback === 'function') callback({ success: false });
+    }
+  });
+
+  // 13. WebRTC Offer Relay (PRD Section 51)
+  socket.on('webrtc-offer', (payload = {}) => {
+    const { sessionId, senderId, targetId, offer, callId, scope } = payload;
+    const session = sessions.get(sessionId?.toUpperCase());
+    if (!session || session.status !== 'ACTIVE') return;
+
+    if (!session.participants.has(senderId) || !session.participants.has(targetId)) return;
+
+    const targetUser = session.participants.get(targetId);
+    const targetSocket = io.sockets.sockets.get(targetUser?.socketId);
+    if (targetSocket) {
+      targetSocket.emit('webrtc-offer', {
+        senderId,
+        offer,
+        callId,
+        scope,
+      });
+    }
+  });
+
+  // 14. WebRTC Answer Relay (PRD Section 51)
+  socket.on('webrtc-answer', (payload = {}) => {
+    const { sessionId, senderId, targetId, answer, callId, scope } = payload;
+    const session = sessions.get(sessionId?.toUpperCase());
+    if (!session || session.status !== 'ACTIVE') return;
+
+    if (!session.participants.has(senderId) || !session.participants.has(targetId)) return;
+
+    const targetUser = session.participants.get(targetId);
+    const targetSocket = io.sockets.sockets.get(targetUser?.socketId);
+    if (targetSocket) {
+      targetSocket.emit('webrtc-answer', {
+        senderId,
+        answer,
+        callId,
+        scope,
+      });
+    }
+  });
+
+  // 15. WebRTC ICE Candidate Relay (PRD Section 51)
+  socket.on('webrtc-ice-candidate', (payload = {}) => {
+    const { sessionId, senderId, targetId, candidate, callId, scope } = payload;
+    const session = sessions.get(sessionId?.toUpperCase());
+    if (!session || session.status !== 'ACTIVE') return;
+
+    if (!session.participants.has(senderId) || !session.participants.has(targetId)) return;
+
+    const targetUser = session.participants.get(targetId);
+    const targetSocket = io.sockets.sockets.get(targetUser?.socketId);
+    if (targetSocket) {
+      targetSocket.emit('webrtc-ice-candidate', {
+        senderId,
+        candidate,
+        callId,
+        scope,
       });
     }
   });

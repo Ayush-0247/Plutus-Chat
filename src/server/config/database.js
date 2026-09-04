@@ -1,5 +1,8 @@
 import mongoose from 'mongoose';
 
+// CRITICAL: fail fast, don't hang if database is offline
+mongoose.set('bufferCommands', false);
+
 let isConnected = false;
 
 export async function connectDatabase() {

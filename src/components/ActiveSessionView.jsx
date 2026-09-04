@@ -12,11 +12,16 @@ import {
   LogOut,
   AlertTriangle,
   Info,
+  Video,
+  Phone,
 } from "lucide-react";
 import { motion } from "motion/react";
 import {
   playMessageSentSound,
 } from "../services/soundEffects.js";
+import { CallWindow } from "./Call/CallWindow.jsx";
+import { FileMessage } from "./File/FileMessage.jsx";
+import { FileUploadButton } from "./File/FileUploadButton.jsx";
 
 export const ActiveSessionView = ({
   sessionData,
@@ -27,6 +32,22 @@ export const ActiveSessionView = ({
   onKickParticipant,
   onLeaveSession,
   onEndSession,
+  // Phase 3 WebRTC calling & P2P file transfer
+  callState = 'IDLE',
+  callType = 'video',
+  localStream = null,
+  remoteStreams = new Map(),
+  isAudioMuted = false,
+  isVideoMuted = false,
+  callWarning = null,
+  onStartCall,
+  onToggleAudio,
+  onToggleVideo,
+  onLeaveCall,
+  onEndCallForEveryone,
+  onSendFile,
+  onCancelFileTransfer,
+  fileTransfers = [],
 }) => {
   const [inputText, setInputText] = useState("");
   const [copiedId, setCopiedId] = useState(false);
@@ -168,8 +189,40 @@ export const ActiveSessionView = ({
             </button>
           </div>
 
-          {/* Action Buttons: Toggle Participants, End Session (Owner), Leave Session (Participant) */}
-          <div className="flex items-center gap-2">
+          {/* Action Buttons: Calling, Toggle Participants, End Session (Owner), Leave Session (Participant) */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Owner Call Controls (PRD Section 11 & 13) */}
+            {isOwner && callState === 'IDLE' && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  id="start_video_call_button"
+                  onClick={() => onStartCall && onStartCall('video')}
+                  title="Start peer-to-peer WebRTC video call with session participants"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider transition-colors border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-x-[1px] active:translate-y-[1px]"
+                >
+                  <Video className="w-3.5 h-3.5" />
+                  <span>VIDEO CALL</span>
+                </button>
+
+                <button
+                  id="start_audio_call_button"
+                  onClick={() => onStartCall && onStartCall('audio')}
+                  title="Start peer-to-peer WebRTC audio call with session participants"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs uppercase tracking-wider transition-colors border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-x-[1px] active:translate-y-[1px]"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  <span>AUDIO CALL</span>
+                </button>
+              </div>
+            )}
+
+            {isOwner && callState === 'INVITING' && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 border-2 border-slate-900 text-indigo-900 text-xs font-bold">
+                <span className="w-2 h-2 rounded-full bg-indigo-600 animate-ping" />
+                <span>INVITING PARTICIPANTS...</span>
+              </div>
+            )}
+
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="md:hidden flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border-2 border-slate-900 text-slate-900 font-bold text-xs"
@@ -299,20 +352,49 @@ export const ActiveSessionView = ({
 
         {/* Real-time Chat Section */}
         <div className="flex-1 flex flex-col bg-white border-2 border-slate-900 rounded-none overflow-hidden shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
-          {/* Messages Body */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/60">
-            {messages.length === 0 ? (
+          {/* Phase 3: Active P2P WebRTC Video / Audio Call Window */}
+          {(callState === 'ACTIVE' || (callState === 'INVITING' && isOwner)) && (
+            <CallWindow
+              callType={callType}
+              localStream={localStream}
+              remoteStreams={remoteStreams}
+              participants={sessionData.participants}
+              myParticipantId={sessionData.participantId}
+              isOwner={isOwner}
+              isAudioMuted={isAudioMuted}
+              isVideoMuted={isVideoMuted}
+              onToggleAudio={onToggleAudio}
+              onToggleVideo={onToggleVideo}
+              onLeaveCall={onLeaveCall}
+              onEndCallForEveryone={onEndCallForEveryone}
+              warningMessage={callWarning}
+            />
+          )}
+
+          {/* Messages Body & P2P Drag-and-Drop Dropzone */}
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const file = e.dataTransfer.files?.[0];
+              if (file && onSendFile) {
+                onSendFile(file);
+              }
+            }}
+            className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/60"
+          >
+            {messages.length === 0 && fileTransfers.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 text-xs">
                 <Radio className="w-10 h-10 text-slate-400 mb-2 animate-pulse" />
                 <p className="font-black text-slate-700 uppercase">
                   Secure Line Connected
                 </p>
                 <p className="max-w-xs mt-1 text-slate-500">
-                  Send a text to begin secure communication. All messages are ephemeral and destroyed when the session ends.
+                  Send a text or attach a file to begin secure communication. All messages, calls, and files are ephemeral and never stored on the server.
                 </p>
               </div>
             ) : (
-              messages.map((m) => {
+              [...messages, ...fileTransfers].map((m) => {
                 if (m.isSystem) {
                   return (
                     <div
@@ -325,7 +407,21 @@ export const ActiveSessionView = ({
                   );
                 }
 
-                const isMe = m.senderId === sessionData.participantId;
+                const isMe = m.senderId === sessionData.participantId || m.isLocal;
+
+                // Phase 3: P2P File / Image / PDF Message Routing
+                if (m.isTransferring || m.objectUrl || m.category || m.type === 'file') {
+                  return (
+                    <div key={m.messageId || m.fileId} className="my-1.5">
+                      <FileMessage
+                        message={m}
+                        isSelf={isMe}
+                        onCancelTransfer={onCancelFileTransfer}
+                      />
+                    </div>
+                  );
+                }
+
                 const timeString = new Date(m.timestamp).toLocaleTimeString(
                   [],
                   {
@@ -335,7 +431,7 @@ export const ActiveSessionView = ({
                   },
                 );
 
-                // Phase 2: Message Type Routing (Image, PDF, Text)
+                // Standard Text Message
                 return (
                   <div
                     key={m.messageId}
@@ -353,7 +449,6 @@ export const ActiveSessionView = ({
                       <span>{timeString}</span>
                     </div>
 
-                    {/* Standard Text Message */}
                     <div
                       className={`max-w-[85%] sm:max-w-[75%] px-4 py-2.5 text-xs break-words leading-relaxed border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] ${
                         isMe
@@ -388,6 +483,9 @@ export const ActiveSessionView = ({
             className="p-3 border-t-2 border-slate-900 bg-white"
           >
             <div className="flex items-center gap-2">
+              {/* P2P File Upload Button (Max 25 MB) */}
+              <FileUploadButton onFileSelect={onSendFile} />
+
               <input
                 ref={inputRef}
                 type="text"

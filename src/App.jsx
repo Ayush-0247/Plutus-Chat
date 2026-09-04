@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { getSocket } from './services/socket.js';
 import { Navbar } from './components/Navbar.jsx';
 import { HomeView } from './components/HomeView.jsx';
@@ -9,22 +9,36 @@ import { EndingCountdownModal } from './components/EndingCountdownModal.jsx';
 import { DestroyedScreen } from './components/DestroyedScreen.jsx';
 import { KickedScreen } from './components/KickedScreen.jsx';
 import { ArchitectureModal } from './components/ArchitectureModal.jsx';
+import { CallInvitationModal } from './components/Call/CallInvitationModal.jsx';
 import {
   playMessageReceivedSound,
   playUserJoinedSound,
   playUserLeftSound,
+  playCallIncomingSound,
+  playCallConnectedSound,
+  playCallEndedSound,
+  playFileCompleteSound,
 } from './services/soundEffects.js';
+import { WebRTCMeshManager } from './webrtc/meshManager.js';
+import {
+  acquireMediaStream,
+  toggleTrackEnabled,
+  stopAllTracks,
+} from './webrtc/mediaManager.js';
+import { revokeAllBlobUrls, getFileCategory } from './webrtc/fileTransfer.js';
 
 export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [uiState, setUiState] = useState('HOME');
   const [activeSession, setActiveSession] = useState(null);
-  // Keep ref in sync so socket handlers (stale closures) can read current value
+  const activeSessionRef = useRef(null);
+
   const setActiveSessionAndRef = (val) => {
     const resolved = typeof val === 'function' ? val(activeSessionRef.current) : val;
     activeSessionRef.current = resolved;
     setActiveSession(resolved);
   };
+
   const [messages, setMessages] = useState([]);
   const [typingUsers, setTypingUsers] = useState([]);
   const [endingData, setEndingData] = useState(null);
@@ -33,12 +47,64 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [showArchitecture, setShowArchitecture] = useState(false);
 
+  // WebRTC Calling & Media State
+  const [callState, setCallState] = useState('IDLE'); // 'IDLE' | 'INVITING' | 'ACTIVE' | 'ENDED'
+  const [callType, setCallType] = useState('video'); // 'video' | 'audio'
+  const [activeCallId, setActiveCallId] = useState(null);
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [localStream, setLocalStream] = useState(null);
+  const [remoteStreams, setRemoteStreams] = useState(new Map());
+  const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const [isVideoMuted, setIsVideoMuted] = useState(false);
+  const [callWarning, setCallWarning] = useState(null);
+
+  // P2P File Transfers State
+  const [fileTransfers, setFileTransfers] = useState([]);
+
   // URL query params for auto-fill on invite links
   const [urlSessionId, setUrlSessionId] = useState('');
   const [urlPasskey, setUrlPasskey] = useState('');
 
   const typingMapRef = useRef(new Map());
-  const activeSessionRef = useRef(null); // always-current ref for use inside socket handlers
+  const meshManagerRef = useRef(null);
+  const localStreamRef = useRef(null);
+
+  // Synchronize localStreamRef
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
+
+  // Teardown calling & media helper
+  const teardownCallState = useCallback(() => {
+    if (localStreamRef.current) {
+      stopAllTracks(localStreamRef.current);
+      setLocalStream(null);
+    }
+    if (meshManagerRef.current) {
+      meshManagerRef.current.cleanupCall();
+    }
+    setCallState('IDLE');
+    setActiveCallId(null);
+    setIncomingCall(null);
+    setRemoteStreams(new Map());
+    setIsAudioMuted(false);
+    setIsVideoMuted(false);
+    setCallWarning(null);
+  }, []);
+
+  // Full session destruction & cleanup helper
+  const purgeAllSessionState = useCallback(() => {
+    teardownCallState();
+    if (meshManagerRef.current) {
+      meshManagerRef.current.destroy();
+      meshManagerRef.current = null;
+    }
+    revokeAllBlobUrls();
+    setFileTransfers([]);
+    setMessages([]);
+    setTypingUsers([]);
+    setActiveSessionAndRef(null);
+  }, [teardownCallState]);
 
   // Check URL parameters on mount
   useEffect(() => {
@@ -53,6 +119,70 @@ export default function App() {
       }
     }
   }, []);
+
+  // Initialize and synchronize WebRTCMeshManager when session is active
+  useEffect(() => {
+    if (!activeSession || uiState !== 'ACTIVE') return;
+
+    const socket = getSocket();
+
+    if (!meshManagerRef.current) {
+      meshManagerRef.current = new WebRTCMeshManager({
+        socket,
+        sessionId: activeSession.sessionId,
+        participantId: activeSession.participantId,
+        username: activeSession.username,
+        isOwner: Boolean(activeSession.isOwner),
+        onRemoteStream: (peerId, stream) => {
+          setRemoteStreams((prev) => {
+            const next = new Map(prev);
+            next.set(peerId, stream);
+            return next;
+          });
+        },
+        onRemoteStreamRemoved: (peerId) => {
+          setRemoteStreams((prev) => {
+            const next = new Map(prev);
+            next.delete(peerId);
+            return next;
+          });
+        },
+        onFileReceived: (fileMessage) => {
+          playFileCompleteSound();
+          setMessages((prev) => [...prev, fileMessage]);
+        },
+        onFileProgress: ({ fileId, progress, isReceiver }) => {
+          setFileTransfers((prev) => {
+            const existingIdx = prev.findIndex((t) => t.fileId === fileId);
+            if (existingIdx !== -1) {
+              const updated = [...prev];
+              updated[existingIdx] = {
+                ...updated[existingIdx],
+                progress,
+              };
+              return updated;
+            }
+            return prev;
+          });
+        },
+        onPeerDataChannelOpen: (peerId) => {
+          // Connected peer data channel
+        },
+        onPeerDisconnected: (peerId) => {
+          setRemoteStreams((prev) => {
+            const next = new Map(prev);
+            next.delete(peerId);
+            return next;
+          });
+        },
+      });
+    }
+
+    // Synchronize peer mesh connections for file transfer channels
+    if (meshManagerRef.current && activeSession.participants) {
+      meshManagerRef.current.syncParticipants(activeSession.participants);
+    }
+  }, [activeSession, uiState]);
 
   // Socket connection & event listeners setup
   useEffect(() => {
@@ -70,17 +200,7 @@ export default function App() {
     const handleSessionCreated = (data) => {
       setIsLoading(false);
       setActiveSessionAndRef(data);
-      setMessages([
-        // {
-        //   messageId: 'sys-start',
-        //   senderId: 'SYSTEM',
-        //   senderName: 'SYSTEM',
-        //   isOwner: false,
-        //   // text: `Secure ephemeral line [${data.sessionId}] initialized in Node.js RAM. You are the OWNER.`,
-        //   timestamp: Date.now(),
-        //   isSystem: true,
-        // },
-      ]);
+      setMessages([]);
       setUiState('ACTIVE');
     };
 
@@ -190,8 +310,7 @@ export default function App() {
     // 7. You were kicked
     const handleKickedSelf = (data) => {
       setKickedReason(data.reason);
-      setActiveSessionAndRef(null);
-      setMessages([]);
+      purgeAllSessionState();
       setUiState('KICKED');
     };
 
@@ -234,17 +353,80 @@ export default function App() {
       setTypingUsers(names);
     };
 
-    // 10. Session ending countdown initiated by server
+    // 10. WebRTC Call Invitation
+    const handleCallInvite = (inviteData) => {
+      // If user is already in call, ignore
+      if (callState === 'ACTIVE') return;
+
+      setIncomingCall(inviteData);
+      playCallIncomingSound();
+    };
+
+    // 11. WebRTC Remote User Joined Call
+    const handleCallUserJoined = (data) => {
+      // If we are currently in this call, initialize peer connection with new participant
+      if (callState === 'ACTIVE' && localStreamRef.current && meshManagerRef.current) {
+        meshManagerRef.current.initiateCallPeerConnection(data.participantId, data.callId);
+      }
+    };
+
+    // 12. WebRTC Remote User Left Call
+    const handleCallUserLeft = (data) => {
+      if (meshManagerRef.current) {
+        meshManagerRef.current.removeCallParticipant(data.participantId);
+      }
+      setRemoteStreams((prev) => {
+        const next = new Map(prev);
+        next.delete(data.participantId);
+        return next;
+      });
+    };
+
+    // 13. WebRTC Call Declined by Joiner
+    const handleCallUserDeclined = (data) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          messageId: `call-declined-${Date.now()}`,
+          senderId: 'SYSTEM',
+          senderName: 'SYSTEM',
+          isOwner: false,
+          text: `${data.username} declined the call invitation.`,
+          timestamp: Date.now(),
+          isSystem: true,
+        },
+      ]);
+    };
+
+    // 14. WebRTC Call Ended
+    const handleCallEnded = (data) => {
+      teardownCallState();
+      playCallEndedSound();
+      if (data?.reason) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            messageId: `call-ended-${Date.now()}`,
+            senderId: 'SYSTEM',
+            senderName: 'SYSTEM',
+            isOwner: false,
+            text: `Call ended: ${data.reason}`,
+            timestamp: Date.now(),
+            isSystem: true,
+          },
+        ]);
+      }
+    };
+
+    // 15. Session ending countdown initiated by server
     const handleSessionEnding = (data) => {
       setEndingData(data);
     };
 
-    // 11. Final Session Destroyed
+    // 16. Final Session Destroyed
     const handleSessionDestroyed = () => {
+      purgeAllSessionState();
       setEndingData(null);
-      setActiveSessionAndRef(null);
-      setMessages([]);
-      setTypingUsers([]);
       setUiState('DESTROYED');
     };
 
@@ -259,6 +441,11 @@ export default function App() {
     socket.on('participant-kicked-self', handleKickedSelf);
     socket.on('receive-message', handleReceiveMessage);
     socket.on('user-typing', handleUserTyping);
+    socket.on('call-invite', handleCallInvite);
+    socket.on('call-user-joined', handleCallUserJoined);
+    socket.on('call-user-left', handleCallUserLeft);
+    socket.on('call-user-declined', handleCallUserDeclined);
+    socket.on('call-ended', handleCallEnded);
     socket.on('session-ending', handleSessionEnding);
     socket.on('session-destroyed', handleSessionDestroyed);
 
@@ -278,10 +465,15 @@ export default function App() {
       socket.off('participant-kicked-self', handleKickedSelf);
       socket.off('receive-message', handleReceiveMessage);
       socket.off('user-typing', handleUserTyping);
+      socket.off('call-invite', handleCallInvite);
+      socket.off('call-user-joined', handleCallUserJoined);
+      socket.off('call-user-left', handleCallUserLeft);
+      socket.off('call-user-declined', handleCallUserDeclined);
+      socket.off('call-ended', handleCallEnded);
       socket.off('session-ending', handleSessionEnding);
       socket.off('session-destroyed', handleSessionDestroyed);
     };
-  }, [activeSession]);
+  }, [purgeAllSessionState, teardownCallState, callState]);
 
   // Actions
   const handleCreateSession = (username) => {
@@ -335,8 +527,7 @@ export default function App() {
       sessionId: activeSession.sessionId,
       participantId: activeSession.participantId,
     });
-    setActiveSessionAndRef(null);
-    setMessages([]);
+    purgeAllSessionState();
     setUiState('HOME');
   };
 
@@ -350,12 +541,223 @@ export default function App() {
   };
 
   const handleResetToHome = () => {
-    setActiveSessionAndRef(null);
+    purgeAllSessionState();
     setEndingData(null);
-    setMessages([]);
-    setTypingUsers([]);
     setJoinErrorMessage(null);
     setUiState('HOME');
+  };
+
+  // Phase 3: WebRTC Call Initiation (Owner Only)
+  const handleStartCall = async (type = 'video') => {
+    if (!activeSession || !activeSession.isOwner) return;
+
+    try {
+      setCallState('INVITING');
+      setCallType(type);
+
+      const { stream, fallbackToAudio } = await acquireMediaStream({
+        video: type === 'video',
+        audio: true,
+      });
+
+      setLocalStream(stream);
+      if (fallbackToAudio) {
+        setCallWarning('Camera permission denied or unavailable. Fallback to audio call active.');
+      } else {
+        setCallWarning(null);
+      }
+
+      const socket = getSocket();
+      socket.emit(
+        'start-call',
+        {
+          sessionId: activeSession.sessionId,
+          participantId: activeSession.participantId,
+          callType: type,
+        },
+        (res) => {
+          if (res?.success) {
+            setActiveCallId(res.callId);
+            setCallState('ACTIVE');
+            if (meshManagerRef.current) {
+              meshManagerRef.current.setupCallConnections(res.callId, stream, res.callParticipants || []);
+            }
+            playCallConnectedSound();
+          } else {
+            alert(res?.message || 'Failed to initiate call');
+            teardownCallState();
+          }
+        }
+      );
+    } catch (err) {
+      alert(`Could not start call: ${err.message}`);
+      teardownCallState();
+    }
+  };
+
+  // Phase 3: WebRTC Accept Incoming Call (Joiner)
+  const handleAcceptCall = async () => {
+    if (!incomingCall || !activeSession) return;
+
+    try {
+      const type = incomingCall.callType || 'video';
+      setCallType(type);
+
+      const { stream, fallbackToAudio } = await acquireMediaStream({
+        video: type === 'video',
+        audio: true,
+      });
+
+      setLocalStream(stream);
+      if (fallbackToAudio) {
+        setCallWarning('Camera permission denied. Joined with audio only.');
+      }
+
+      const targetCallId = incomingCall.callId;
+      setIncomingCall(null);
+      setActiveCallId(targetCallId);
+      setCallState('ACTIVE');
+
+      const socket = getSocket();
+      socket.emit(
+        'call-response',
+        {
+          sessionId: activeSession.sessionId,
+          participantId: activeSession.participantId,
+          callId: targetCallId,
+          accept: true,
+        },
+        (res) => {
+          if (res?.success && meshManagerRef.current) {
+            meshManagerRef.current.setupCallConnections(
+              targetCallId,
+              stream,
+              res.callParticipants || []
+            );
+            playCallConnectedSound();
+          }
+        }
+      );
+    } catch (err) {
+      alert(`Could not join call: ${err.message}`);
+      handleDeclineCall();
+    }
+  };
+
+  // Phase 3: WebRTC Decline Incoming Call
+  const handleDeclineCall = () => {
+    if (!incomingCall || !activeSession) return;
+    const socket = getSocket();
+    socket.emit('call-response', {
+      sessionId: activeSession.sessionId,
+      participantId: activeSession.participantId,
+      callId: incomingCall.callId,
+      accept: false,
+    });
+    setIncomingCall(null);
+  };
+
+  // Phase 3: Leave Current Call (Voluntary)
+  const handleLeaveCall = () => {
+    if (!activeCallId || !activeSession) return;
+    const socket = getSocket();
+    socket.emit('leave-call', {
+      sessionId: activeSession.sessionId,
+      participantId: activeSession.participantId,
+      callId: activeCallId,
+    });
+    teardownCallState();
+    playCallEndedSound();
+  };
+
+  // Phase 3: End Call For Everyone (Owner Only)
+  const handleEndCallForEveryone = () => {
+    if (!activeCallId || !activeSession || !activeSession.isOwner) return;
+    const socket = getSocket();
+    socket.emit('end-call', {
+      sessionId: activeSession.sessionId,
+      participantId: activeSession.participantId,
+      callId: activeCallId,
+    });
+    teardownCallState();
+    playCallEndedSound();
+  };
+
+  // Audio / Video Mute Toggles
+  const handleToggleAudio = () => {
+    if (!localStream) return;
+    const nextMuted = !isAudioMuted;
+    toggleTrackEnabled(localStream, 'audio', isAudioMuted);
+    setIsAudioMuted(nextMuted);
+  };
+
+  const handleToggleVideo = () => {
+    if (!localStream) return;
+    const nextMuted = !isVideoMuted;
+    toggleTrackEnabled(localStream, 'video', isVideoMuted);
+    setIsVideoMuted(nextMuted);
+  };
+
+  // Phase 3: P2P File Upload & Transfer
+  const handleSendFile = async (file) => {
+    if (!activeSession || !meshManagerRef.current) return;
+
+    const fileId = crypto.randomUUID();
+    const category = getFileCategory(file.type, file.name);
+
+    // Add in-progress item to transfers state
+    const transferEntry = {
+      fileId,
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type,
+      category,
+      progress: 0,
+      status: 'transferring',
+      isTransferring: true,
+      isLocal: true,
+      senderName: activeSession.username,
+      timestamp: Date.now(),
+    };
+
+    setFileTransfers((prev) => [...prev, transferEntry]);
+
+    try {
+      await meshManagerRef.current.broadcastFile(file, {
+        onProgress: (progress) => {
+          setFileTransfers((prev) =>
+            prev.map((t) => (t.fileId === fileId ? { ...t, progress } : t))
+          );
+        },
+      });
+
+      // Transfer completed: Remove from in-progress transfers, append to messages
+      setFileTransfers((prev) => prev.filter((t) => t.fileId !== fileId));
+
+      const objectUrl = URL.createObjectURL(file);
+      const localFileMessage = {
+        messageId: fileId,
+        fileId,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+        category,
+        objectUrl,
+        senderId: activeSession.participantId,
+        senderName: activeSession.username,
+        isOwner: activeSession.isOwner,
+        timestamp: Date.now(),
+      };
+
+      setMessages((prev) => [...prev, localFileMessage]);
+    } catch (err) {
+      alert(`File transfer failed: ${err.message}`);
+      setFileTransfers((prev) => prev.filter((t) => t.fileId !== fileId));
+    }
+  };
+
+  const handleCancelFileTransfer = (fileId) => {
+    setFileTransfers((prev) => prev.filter((t) => t.fileId !== fileId));
   };
 
   return (
@@ -406,6 +808,22 @@ export default function App() {
             onKickParticipant={handleKickParticipant}
             onLeaveSession={handleLeaveSession}
             onEndSession={handleEndSession}
+            // Phase 3 WebRTC calling & P2P file transfers
+            callState={callState}
+            callType={callType}
+            localStream={localStream}
+            remoteStreams={remoteStreams}
+            isAudioMuted={isAudioMuted}
+            isVideoMuted={isVideoMuted}
+            callWarning={callWarning}
+            onStartCall={handleStartCall}
+            onToggleAudio={handleToggleAudio}
+            onToggleVideo={handleToggleVideo}
+            onLeaveCall={handleLeaveCall}
+            onEndCallForEveryone={handleEndCallForEveryone}
+            onSendFile={handleSendFile}
+            onCancelFileTransfer={handleCancelFileTransfer}
+            fileTransfers={fileTransfers}
           />
         )}
 
@@ -424,6 +842,17 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Incoming Call Invitation Modal */}
+      {incomingCall && (
+        <CallInvitationModal
+          isOpen={Boolean(incomingCall)}
+          callerName={incomingCall.callerName}
+          callType={incomingCall.callType}
+          onAccept={handleAcceptCall}
+          onDecline={handleDeclineCall}
+        />
+      )}
 
       {/* Server-Authoritative Countdown Overlay */}
       {endingData && (
