@@ -22,23 +22,23 @@ export const HomeView = ({
     <div className="max-w-4xl mx-auto px-4 py-8 sm:py-12 space-y-8 sm:space-y-10 font-sans">
       {/* Hero Header */}
       <div className="text-center space-y-3.5 max-w-2xl mx-auto">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-[#e9edef] text-xs font-semibold text-[#111b21] shadow-2xs">
+        {/* <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-[#e9edef] text-xs font-semibold text-[#111b21] shadow-2xs">
           <span className="w-2 h-2 rounded-full bg-[#00a884] pulse-indicator" />
           <span className="text-[#54656f]">ZERO-PERSISTENCE PROTOCOL</span>
           <span className="text-[#e9edef]">•</span>
           <span className="text-[#008069] font-bold">NODE.JS RAM ONLY</span>
-        </div>
+        </div> */}
 
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-[#111b21] tracking-tight">
           Real-Time Ephemeral <br />
           <span className="text-[#00a884]">Communication Line</span>
         </h1>
 
-        <p className="text-xs sm:text-sm text-[#54656f] leading-relaxed max-w-xl mx-auto">
+        {/* <p className="text-xs sm:text-sm text-[#54656f] leading-relaxed max-w-xl mx-auto">
           Zero database persistence. Complete in-memory session lifecycle in
           volatile server RAM. Protected by cryptographic links & passkeys.
           Hard-destroyed upon owner departure.
-        </p>
+        </p> */}
       </div>
 
       {/* Main Action Cards */}
@@ -70,7 +70,7 @@ export const HomeView = ({
               </p>
             </div>
 
-            <div className="pt-2 border-t border-[#f0f2f5] space-y-1.5 text-xs text-[#54656f]">
+            {/* <div className="pt-2 border-t border-[#f0f2f5] space-y-1.5 text-xs text-[#54656f]">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#00a884]" />
                 <span>Encrypted P2P Voice & Video Calls</span>
@@ -83,7 +83,7 @@ export const HomeView = ({
                 <span className="w-1.5 h-1.5 rounded-full bg-[#00a884]" />
                 <span>Session-Scoped Irrevocable Bans</span>
               </div>
-            </div>
+            </div> */}
           </div>
 
           <button
@@ -123,7 +123,7 @@ export const HomeView = ({
               </p>
             </div>
 
-            <div className="pt-2 border-t border-[#f0f2f5] space-y-1.5 text-xs text-[#54656f]">
+            {/* <div className="pt-2 border-t border-[#f0f2f5] space-y-1.5 text-xs text-[#54656f]">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                 <span>Dual-Factor Passkey Verification</span>
@@ -136,7 +136,7 @@ export const HomeView = ({
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                 <span>Voluntary Disconnect Anytime</span>
               </div>
-            </div>
+            </div> */}
           </div>
 
           <button
