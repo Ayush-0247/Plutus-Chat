@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, Radio } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Radio, ShieldCheck, KeyRound } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export const CreateSessionView = ({
@@ -15,30 +15,31 @@ export const CreateSessionView = ({
   };
 
   return (
-    <div className="max-w-md mx-auto p-4 sm:p-6">
+    <div className="max-w-md mx-auto p-4 sm:p-6 font-sans">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white border-2 border-slate-900 rounded-none p-6 sm:p-8 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] font-mono"
+        className="bg-white rounded-2xl border border-[#e9edef] shadow-xl overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b-2 border-slate-900">
-          <div className="p-2.5 bg-indigo-600 border-2 border-slate-900 text-white shadow-[2px_2px_0px_0px_rgba(15,23,42,1)]">
+        <div className="px-6 py-5 bg-[#f0f2f5] border-b border-[#e9edef] flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#00a884] flex items-center justify-center text-white shadow-2xs shrink-0">
             <Radio className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-black text-slate-900 uppercase tracking-wide font-sans">
+            <h2 className="text-base font-bold text-[#111b21]">
               Create Secure Line
             </h2>
-            {/* <p className="text-xs text-slate-500 font-mono">
-              Initialize a temporary owner-controlled room
-            </p> */}
+            <p className="text-xs text-[#54656f]">
+              Initialize an ephemeral owner-controlled room
+            </p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div>
-            <label className="block text-xs font-black text-slate-900 uppercase tracking-wider mb-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#54656f] mb-1.5">
               Your Codename / Handle
             </label>
             <input
@@ -49,39 +50,42 @@ export const CreateSessionView = ({
               placeholder="e.g. Cipher, Ayush, Agent-01"
               maxLength={32}
               autoFocus
-              className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-900 focus:border-indigo-600 focus:bg-white text-slate-900 placeholder-slate-400 text-sm font-mono focus:outline-none shadow-inner"
+              className="w-full px-4 py-3 bg-[#f0f2f5] rounded-xl border border-[#e9edef] focus:border-[#00a884] focus:bg-white text-[#111b21] placeholder-[#667781] text-sm outline-none transition-all shadow-2xs font-medium"
             />
-            {/* <p className="text-[11px] text-slate-500 mt-1.5 font-mono">
-              You will be granted OWNER privileges to manage participants and terminate the line.
-            </p> */}
+            <p className="text-[11px] text-[#54656f] mt-1.5 leading-normal">
+              You will be granted <strong>Owner</strong> authority with participant moderation,
+              QR code device linking, and line termination rights.
+            </p>
           </div>
 
           {/* Security Features checklist */}
-          {/* <div className="p-3.5 bg-slate-100 border-2 border-slate-900 space-y-2 text-[11px] text-slate-700">
-            <div className="flex items-center gap-2 text-indigo-700 font-black uppercase">
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>Automatic Security Generation</span>
+          <div className="p-3.5 bg-[#e7f7f3] rounded-xl border border-[#00a884]/20 space-y-1.5 text-xs text-[#008069]">
+            <div className="flex items-center gap-1.5 font-bold">
+              <ShieldCheck className="w-4 h-4 text-[#00a884]" />
+              <span>Automatic Cryptographic Generation</span>
             </div>
-            <p className="text-slate-600 font-mono">
-              A high-entropy Session ID and secret passkey will be generated in Node.js RAM upon creation.
+            <p className="text-[11px] leading-relaxed">
+              A high-entropy Session ID and secret passkey will be automatically
+              generated in Node.js volatile RAM upon creation.
             </p>
-          </div> */}
+          </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-3 pt-2">
+          <div className="flex items-center gap-2.5 pt-2">
             <button
               id="cancel_create_button"
               type="button"
               onClick={onCancel}
-              className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-x-[1px] active:translate-y-[1px]"
+              className="px-4 py-2.5 bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] rounded-xl font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
             >
-              Back
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back</span>
             </button>
             <button
               id="confirm_create_session_button"
               type="submit"
               disabled={isLoading}
-              className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2 border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none focus:outline-none"
+              className="flex-1 px-4 py-2.5 bg-[#00a884] hover:bg-[#008f6f] disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-[0.98]"
             >
               {isLoading ? (
                 <span>Generating Line...</span>

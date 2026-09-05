@@ -1,5 +1,5 @@
-import  { useState, useEffect } from 'react';
-import { KeyRound, ArrowRight, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { KeyRound, ArrowRight, ArrowLeft, AlertCircle, ShieldCheck } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export const JoinSessionView = ({
@@ -22,42 +22,46 @@ export const JoinSessionView = ({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!sessionId.trim() || !passkey.trim()) return;
-    onJoinSession(sessionId.trim().toUpperCase(), passkey.trim().toUpperCase(), username.trim() || 'Participant');
+    onJoinSession(
+      sessionId.trim().toUpperCase(),
+      passkey.trim().toUpperCase(),
+      username.trim() || 'Participant'
+    );
   };
 
   return (
-    <div className="max-w-md mx-auto p-4 sm:p-6">
+    <div className="max-w-md mx-auto p-4 sm:p-6 font-sans">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white border-2 border-slate-900 rounded-none p-6 sm:p-8 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] font-mono"
+        className="bg-white rounded-2xl border border-[#e9edef] shadow-xl overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b-2 border-slate-900">
-          <div className="p-2.5 bg-slate-900 border-2 border-slate-900 text-amber-400 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)]">
+        <div className="px-6 py-5 bg-[#f0f2f5] border-b border-[#e9edef] flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#111b21] flex items-center justify-center text-amber-400 shadow-2xs shrink-0">
             <KeyRound className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-black text-slate-900 uppercase tracking-wide font-sans">
+            <h2 className="text-base font-bold text-[#111b21]">
               Join Secure Line
             </h2>
-            {/* <p className="text-xs text-slate-500 font-mono">
-              Provide link ID & passkey to authenticate
-            </p> */}
+            <p className="text-xs text-[#54656f]">
+              Enter Session ID and Passkey to authenticate
+            </p>
           </div>
         </div>
 
         {/* Error Alert if any */}
         {errorMessage && (
-          <div className="mb-5 p-3.5 bg-rose-50 border-2 border-rose-600 text-rose-900 text-xs flex items-start gap-2.5 font-bold">
+          <div className="m-6 mb-0 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-start gap-2.5 font-semibold">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div className="leading-snug">{errorMessage}</div>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-black text-slate-900 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#54656f] mb-1.5">
               Session ID
             </label>
             <input
@@ -68,12 +72,12 @@ export const JoinSessionView = ({
               placeholder="e.g. 8F7K2M"
               required
               maxLength={12}
-              className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-900 focus:border-indigo-600 focus:bg-white text-slate-900 placeholder-slate-400 text-sm uppercase tracking-wider font-bold focus:outline-none shadow-inner"
+              className="w-full px-4 py-3 bg-[#f0f2f5] rounded-xl border border-[#e9edef] focus:border-[#00a884] focus:bg-white text-[#111b21] placeholder-[#667781] text-sm uppercase tracking-wider font-mono font-bold outline-none transition-all shadow-2xs"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-black text-slate-900 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#54656f] mb-1.5">
               Session Passkey
             </label>
             <input
@@ -83,13 +87,13 @@ export const JoinSessionView = ({
               onChange={(e) => setPasskey(e.target.value.toUpperCase())}
               placeholder="e.g. ALPHA-982"
               required
-              maxLength={20}
-              className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-900 focus:border-indigo-600 focus:bg-white text-slate-900 placeholder-slate-400 text-sm uppercase tracking-wider font-bold focus:outline-none shadow-inner"
+              maxLength={24}
+              className="w-full px-4 py-3 bg-[#fef9c3] rounded-xl border border-[#fde047] focus:border-amber-500 focus:bg-white text-[#713f12] placeholder-amber-700/60 text-sm uppercase tracking-wider font-mono font-bold outline-none transition-all shadow-2xs"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-black text-slate-900 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#54656f] mb-1.5">
               Your Codename / Handle
             </label>
             <input
@@ -99,29 +103,34 @@ export const JoinSessionView = ({
               onChange={(e) => setUsername(e.target.value)}
               placeholder="e.g. Rahul, Aman, Rishi"
               maxLength={32}
-              className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-900 focus:border-indigo-600 focus:bg-white text-slate-900 placeholder-slate-400 text-sm focus:outline-none shadow-inner"
+              className="w-full px-4 py-3 bg-[#f0f2f5] rounded-xl border border-[#e9edef] focus:border-[#00a884] focus:bg-white text-[#111b21] placeholder-[#667781] text-sm outline-none transition-all shadow-2xs font-medium"
             />
           </div>
 
-          {/* <div className="p-3 bg-slate-100 border-2 border-slate-900 text-[11px] text-slate-700">
-            <span className="text-indigo-800 font-bold uppercase">Dual-Factor Verification:</span> Both credentials will be validated against active RAM state on the server.
-          </div> */}
+          <div className="p-3 bg-[#f0f2f5] rounded-xl border border-[#e9edef] text-xs text-[#54656f] flex items-start gap-2">
+            <ShieldCheck className="w-4 h-4 text-[#00a884] shrink-0 mt-0.5" />
+            <span className="text-[11px] leading-relaxed">
+              Dual-factor authentication checks against active RAM session states.
+              Never stored permanently.
+            </span>
+          </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-3 pt-2">
+          <div className="flex items-center gap-2.5 pt-2">
             <button
               id="cancel_join_button"
               type="button"
               onClick={onCancel}
-              className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-900 border-2 border-slate-900 font-bold text-xs uppercase tracking-wider transition-colors shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-x-[1px] active:translate-y-[1px]"
+              className="px-4 py-2.5 bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] rounded-xl font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
             >
-              Back
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back</span>
             </button>
             <button
               id="confirm_join_session_button"
               type="submit"
               disabled={isLoading || !sessionId.trim() || !passkey.trim()}
-              className="flex-1 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2 border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none focus:outline-none"
+              className="flex-1 px-4 py-2.5 bg-[#00a884] hover:bg-[#008f6f] disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-[0.98]"
             >
               {isLoading ? (
                 <span>Validating Line...</span>

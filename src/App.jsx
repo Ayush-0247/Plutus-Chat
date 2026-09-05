@@ -58,6 +58,16 @@ export default function App() {
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [callWarning, setCallWarning] = useState(null);
 
+  const notifyUser = (msg) => {
+    try {
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert(msg);
+      }
+    } catch (e) {
+      console.warn('[Notification]:', msg);
+    }
+  };
+
   // P2P File Transfers State
   const [fileTransfers, setFileTransfers] = useState([]);
 
@@ -631,13 +641,13 @@ export default function App() {
             }
             playCallConnectedSound();
           } else {
-            alert(res?.message || 'Failed to initiate call');
+            notifyUser(res?.message || 'Failed to initiate call');
             teardownCallState();
           }
         }
       );
     } catch (err) {
-      alert(`Could not start call: ${err.message}`);
+      notifyUser(`Could not start call: ${err.message}`);
       teardownCallState();
     }
   };
@@ -689,7 +699,7 @@ export default function App() {
         }
       );
     } catch (err) {
-      alert(`Could not join call: ${err.message}`);
+      notifyUser(`Could not join call: ${err.message}`);
       handleDeclineCall();
     }
   };
@@ -801,7 +811,7 @@ export default function App() {
 
       setMessages((prev) => [...prev, localFileMessage]);
     } catch (err) {
-      alert(`File transfer failed: ${err.message}`);
+      notifyUser(`File transfer failed: ${err.message}`);
       setFileTransfers((prev) => prev.filter((t) => t.fileId !== fileId));
     }
   };
@@ -811,16 +821,18 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
-      {/* Navigation Header */}
-      <Navbar
-        isConnected={isConnected}
-        activeSessionId={activeSession?.sessionId}
-        onOpenArchitecture={() => setShowArchitecture(true)}
-      />
+    <div className="min-h-screen bg-[#f0f2f5] text-[#111b21] flex flex-col font-sans selection:bg-[#00a884] selection:text-white">
+      {/* Navigation Header (Shown on Home, Creating, Joining, Destroyed, Kicked screens) */}
+      {uiState !== 'ACTIVE' && (
+        <Navbar
+          isConnected={isConnected}
+          activeSessionId={activeSession?.sessionId}
+          onOpenArchitecture={() => setShowArchitecture(true)}
+        />
+      )}
 
       {/* Main View Router */}
-      <main className="flex-1 flex flex-col">
+      <main className={`flex-1 flex flex-col ${uiState === 'ACTIVE' ? 'h-screen overflow-hidden' : ''}`}>
         {uiState === 'HOME' && (
           <HomeView
             onCreateClick={() => setUiState('CREATING')}
@@ -877,6 +889,7 @@ export default function App() {
             incomingCall={incomingCall}
             onAcceptCall={handleAcceptCall}
             onDeclineCall={handleDeclineCall}
+            onOpenArchitecture={() => setShowArchitecture(true)}
           />
         )}
 

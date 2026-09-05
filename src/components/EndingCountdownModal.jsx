@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertOctagon, ShieldAlert, Clock } from 'lucide-react';
+import { AlertOctagon, Clock, ShieldAlert } from 'lucide-react';
 import { motion } from 'motion/react';
 import { playCountdownTickSound } from '../services/soundEffects.js';
 
@@ -39,72 +39,72 @@ export const EndingCountdownModal = ({ endingData, isOwner }) => {
   const progressPercent = Math.min(100, Math.max(0, (1 - msRemaining / totalMs) * 100));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs font-sans">
       <motion.div
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        initial={{ opacity: 0, scale: 0.94, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-lg bg-white border-4 border-rose-600 rounded-none p-6 sm:p-8 shadow-[12px_12px_0px_0px_rgba(225,29,72,1)] text-center font-mono relative overflow-hidden"
+        className="w-full max-w-lg bg-white rounded-2xl border border-[#e9edef] p-6 sm:p-8 shadow-2xl text-center relative overflow-hidden"
       >
         {/* Animated warning stripe header */}
-        <div className="absolute top-0 left-0 right-0 h-3 bg-gradient-to-r from-rose-600 via-amber-400 to-rose-600 animate-pulse" />
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-500 via-amber-400 to-rose-500 animate-pulse" />
 
         {/* Warning Icon Badge */}
-        <div className="mx-auto w-16 h-16 bg-rose-600 border-2 border-slate-900 flex items-center justify-center text-white mb-4 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
-          <AlertOctagon className="w-9 h-9 animate-bounce" />
+        <div className="mx-auto w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-[#ea0038] mb-4 shadow-2xs">
+          <AlertOctagon className="w-8 h-8 animate-bounce" />
         </div>
 
         {/* Title / Status */}
-        <div className="space-y-1 mb-6">
-          <span className="inline-block px-3 py-1 text-xs font-black bg-slate-900 text-amber-400 uppercase tracking-widest border border-slate-900">
-            {endingData.reason === 'OWNER_LEFT' ? 'OWNER DISCONNECTED' : 'ALL OUT • SESSION TERMINATION'}
-          </span>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-wide font-sans mt-2">
-            {isWarningPhase ? 'SESSION IS CLOSING' : 'PURGING EPHEMERAL RAM'}
-          </h2>
-          <p className="text-xs text-slate-600 max-w-md mx-auto font-mono mt-1">
+        <div className="space-y-1 mb-5">
+          <span className="inline-block px-3 py-1 text-xs font-bold bg-rose-50 border border-rose-200 text-[#ea0038] rounded-full uppercase tracking-wider">
             {endingData.reason === 'OWNER_LEFT'
-              ? 'The session owner has left or closed their connection. In accordance with zero-persistence policy, all session state is being permanently destroyed.'
+              ? 'OWNER DISCONNECTED'
+              : 'ALL OUT • SESSION TERMINATION'}
+          </span>
+          <h2 className="text-xl sm:text-2xl font-bold text-[#111b21] tracking-tight mt-2">
+            {isWarningPhase ? 'Session is Closing' : 'Purging Ephemeral RAM'}
+          </h2>
+          <p className="text-xs text-[#54656f] max-w-md mx-auto leading-relaxed mt-1">
+            {endingData.reason === 'OWNER_LEFT'
+              ? 'The session owner has disconnected. In accordance with zero-persistence policy, all session state is being permanently destroyed.'
               : 'The session owner has initiated hard session termination. All participant connections and in-memory caches will be erased.'}
           </p>
         </div>
 
         {/* Large Countdown Display */}
-        <div className="my-6 p-6 bg-slate-900 border-2 border-slate-900 relative shadow-[4px_4px_0px_0px_rgba(225,29,72,0.6)]">
-          <div className="text-xs text-slate-400 uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5 font-bold">
+        <div className="my-5 p-5 bg-[#111b21] rounded-xl border border-[#2a3942] relative shadow-sm text-white">
+          <div className="text-xs text-[#667781] uppercase tracking-wider mb-1 flex items-center justify-center gap-1.5 font-bold">
             <Clock className="w-3.5 h-3.5 text-rose-400" />
-            Time until hard destruction
-          </div>
-          
-          <div className="text-6xl sm:text-7xl font-black text-amber-400 tracking-tighter tabular-nums">
-            {secondsRemaining}
-            <span className="text-xl sm:text-2xl font-bold text-slate-400 ml-1">s</span>
+            <span>Time Until Hard Destruction</span>
           </div>
 
-          <div className="mt-3 text-[11px] text-slate-400 font-bold uppercase">
+          <div className="text-5xl sm:text-6xl font-black text-amber-400 tracking-tight tabular-nums my-1">
+            {secondsRemaining}
+            <span className="text-lg font-bold text-white/50 ml-1">s</span>
+          </div>
+
+          <div className="text-[11px] text-[#00a884] font-medium uppercase">
             {isWarningPhase
-              ? 'Phase 1: Session notification & closure warning'
-              : 'Phase 2: Authoritative destruction countdown'}
+              ? 'Phase 1: Graceful closure notification'
+              : 'Phase 2: Authoritative RAM eradication'}
           </div>
         </div>
 
         {/* Destruction Progress Bar */}
-        <div className="space-y-1.5 mb-6">
-          <div className="flex justify-between text-[11px] text-slate-700 font-bold">
+        <div className="space-y-1.5 mb-5">
+          <div className="flex justify-between text-xs text-[#54656f] font-semibold">
             <span>TERMINATION PROGRESS</span>
-            <span className="text-rose-700 font-black">{Math.round(progressPercent)}%</span>
+            <span className="text-[#ea0038] font-bold">{Math.round(progressPercent)}%</span>
           </div>
-          <div className="w-full h-3 bg-slate-200 border-2 border-slate-900 overflow-hidden">
+          <div className="w-full h-2.5 bg-[#f0f2f5] rounded-full overflow-hidden border border-[#e9edef]">
             <div
-              className="h-full bg-rose-600 transition-all duration-75 ease-linear"
+              className="h-full bg-[#ea0038] transition-all duration-75 ease-linear rounded-full"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
         </div>
 
-        {/* Information Notice */}
-        <div className="p-3 bg-amber-50 border-2 border-amber-500 text-[11px] text-amber-950 font-bold flex items-center justify-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
-          <span>No chat logs or session records will survive this countdown.</span>
+        <div className="text-[11px] text-[#54656f] bg-[#f0f2f5] p-2.5 rounded-xl border border-[#e9edef]">
+          Zero database persistence. Complete wipe of all active memory references in Node.js runtime.
         </div>
       </motion.div>
     </div>

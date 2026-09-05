@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Volume2, VolumeX, Radio, Terminal } from 'lucide-react';
+import { Volume2, VolumeX, Radio, Shield, Info, Wifi } from 'lucide-react';
 import { isSoundEnabled, toggleSound } from '../services/soundEffects.js';
 
 export const Navbar = ({
@@ -15,87 +15,142 @@ export const Navbar = ({
   };
 
   return (
-    <header id="main_navbar" className="w-full border-b-2 border-slate-900 bg-white/95 backdrop-blur-md sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        {/* Brand Title */}
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 bg-slate-900 border-2 border-slate-900 flex items-center justify-center text-white shadow-[2px_2px_0px_0px_rgba(15,23,42,1)]">
-            <Shield className="w-5 h-5" />
+    <header
+      id="main_navbar"
+      className="w-full bg-[#f0f2f5] border-b border-[#e9edef] sticky top-0 z-40 shadow-2xs"
+    >
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+        {/* Brand Logo & Title */}
+        <div className="flex items-center gap-2.5">
+          <div
+            id="navbar-brand-logo"
+            className="w-9 h-9 rounded-xl bg-[#00a884] flex items-center justify-center text-white shadow-2xs shrink-0"
+          >
+            <svg
+              className="w-5 h-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
           </div>
-          <div>
-            {/* <div className="flex items-center gap-2">
-              <span className="font-mono font-black text-sm sm:text-base text-slate-900 tracking-wider">
-                EPHEMERAL<span className="text-indigo-600">.LINE</span>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1">
+              <span className="text-base sm:text-lg font-bold tracking-tight text-[#111b21]">
+                PLUTUS
               </span>
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-mono tracking-tight font-bold bg-emerald-100 border border-emerald-600 text-emerald-900">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                NO DATABASE • RAM ONLY
+              <span className="text-base sm:text-lg font-bold tracking-tight text-[#00a884]">
+                .CHAT
               </span>
-            </div> */}
-
-             <div className="flex items-center gap-2">
-              <span className="font-mono font-black text-sm sm:text-base text-slate-900 tracking-wider">
-                PLUTUS<span className="text-indigo-600">.CHAT</span>
-              </span>
-             
             </div>
-
-
-
-            {/* <p className="text-[11px] text-slate-500 hidden sm:block font-mono font-medium">
-              Zero-Persistence Real-time Secure Text Channel
-            </p> */}
           </div>
         </div>
 
-        {/* Actions & Status */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/* Status Indicators & Actions */}
+        <div className="flex items-center gap-2 sm:gap-2.5">
           {/* Active Session Indicator */}
           {activeSessionId && (
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 border-2 border-slate-900 text-slate-900 font-mono text-xs font-bold">
-              <Radio className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
-              <span className="text-slate-500">LINE:</span>
-              <span className="text-indigo-600">{activeSessionId}</span>
+            <div
+              id="navbar-session-pill"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white border border-[#e9edef] text-xs font-mono shadow-2xs"
+            >
+              <svg
+                className="w-3.5 h-3.5 text-[#00a884] pulse-indicator shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" />
+                <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" />
+                <circle cx="12" cy="12" r="2" />
+                <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" />
+                <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" />
+              </svg>
+              <span className="text-[#54656f] font-semibold text-[11px]">LINE:</span>
+              <span className="font-bold text-[#00a884]">{activeSessionId}</span>
             </div>
           )}
 
           {/* Connection Status Pill */}
           <div
             id="connection_status_badge"
-            className={`flex items-center gap-1.5 px-2.5 py-1 border-2 text-xs font-mono font-bold transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors shadow-2xs ${
               isConnected
-                ? 'bg-emerald-50 border-emerald-700 text-emerald-800'
-                : 'bg-amber-50 border-amber-600 text-amber-900'
+                ? 'bg-[#e7f7f3] border-[#00a884]/30 text-[#008069]'
+                : 'bg-amber-50 border-amber-200 text-amber-800'
             }`}
           >
             <span
               className={`w-2 h-2 rounded-full ${
-                isConnected ? 'bg-emerald-600' : 'bg-amber-500 animate-ping'
+                isConnected ? 'bg-[#00a884]' : 'bg-amber-500 animate-ping'
               }`}
             />
-            <span className="hidden xs:inline">{isConnected ? 'SERVER SYNCED' : 'CONNECTING...'}</span>
+            <span className="text-[11px]">
+              {isConnected ? 'NODE RAM ACTIVE' : 'CONNECTING...'}
+            </span>
           </div>
 
           {/* Audio toggle button */}
           <button
-            id="toggle_audio_button"
+            id="navbar-audio-btn"
             onClick={handleToggleSound}
-            title={sound ? 'Mute sound effects' : 'Enable sound effects'}
-            className="p-2 bg-white border-2 border-slate-900 text-slate-800 hover:bg-slate-100 transition-colors shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none focus:outline-none"
+            title={sound ? 'Mute sound notifications' : 'Enable sound notifications'}
+            className={`w-8 h-8 rounded-lg bg-white border border-[#e9edef] flex items-center justify-center transition-colors cursor-pointer shadow-2xs ${
+              sound
+                ? 'text-[#54656f] hover:text-[#111b21] hover:bg-[#e9edef]'
+                : 'text-rose-500 hover:bg-rose-50'
+            }`}
             aria-label="Toggle audio effects"
           >
-            {sound ? <Volume2 className="w-4 h-4 text-indigo-600" /> : <VolumeX className="w-4 h-4 text-slate-400" />}
+            {sound ? (
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+              </svg>
+            ) : (
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <line x1="23" y1="9" x2="17" y2="15" />
+                <line x1="17" y1="9" x2="23" y2="15" />
+              </svg>
+            )}
           </button>
 
-          {/* Architecture & PRD details button */}
-          {/* <button
-            id="view_architecture_button"
-            onClick={onOpenArchitecture}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-800 text-xs font-mono font-bold uppercase tracking-wider transition-colors shadow-[2px_2px_0px_0px_rgba(15,23,42,0.4)] active:translate-x-[1px] active:translate-y-[1px] focus:outline-none"
-          >
-            <Terminal className="w-3.5 h-3.5 text-indigo-300" />
-            <span className="hidden sm:inline">SPEC / RAM RULES</span>
-          </button> */}
+          {/* Architecture Spec Button */}
+          {onOpenArchitecture && (
+            <button
+              id="view_architecture_button"
+              onClick={onOpenArchitecture}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white border border-[#e9edef] text-[#54656f] hover:text-[#111b21] hover:bg-[#e9edef] text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+              title="View Architecture Specifications"
+            >
+              <Info className="w-3.5 h-3.5 text-[#00a884]" />
+              <span className="hidden sm:inline text-[11px]">SPECS</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

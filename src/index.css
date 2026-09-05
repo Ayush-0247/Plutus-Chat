@@ -2,9 +2,10 @@
 
 @layer base {
   body {
-    font-family: 'JetBrains Mono', monospace;
-    background-color: #f8fafc;
-    color: #0f172a;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #f0f2f5;
+    color: #111b21;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
@@ -25,5 +26,33 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* Clean minimalism chat background doodle wallpaper from test.html */
+.chat-wallpaper {
+  background-color: #efeae2;
+  background-image:
+    radial-gradient(#d1c7b8 0.75px, transparent 0.75px),
+    radial-gradient(#d1c7b8 0.75px, #efeae2 0.75px);
+  background-size: 30px 30px;
+  background-position:
+    0 0,
+    15px 15px;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.15);
+  }
+}
+
+.pulse-indicator {
+  animation: pulse-dot 2s infinite ease-in-out;
 }
 
