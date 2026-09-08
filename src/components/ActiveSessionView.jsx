@@ -82,9 +82,44 @@ export const ActiveSessionView = ({
   const toastTimeoutRef = useRef(null);
 
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const isNearBottomRef = useRef(true);
+  const prevItemsCountRef = useRef(0);
+  const [showNewMessagesBtn, setShowNewMessagesBtn] = useState(false);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+
+  const checkIfNearBottom = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    const threshold = 100;
+    const distanceToBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    return distanceToBottom < threshold;
+  };
+
+  const handleScroll = () => {
+    const nearBottom = checkIfNearBottom();
+    isNearBottomRef.current = nearBottom;
+    if (nearBottom) {
+      setShowNewMessagesBtn(false);
+    }
+  };
+
+  const scrollToBottom = (behavior = "smooth") => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior,
+      });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior });
+    }
+    setShowNewMessagesBtn(false);
+    isNearBottomRef.current = true;
+  };
 
   const triggerToast = (text) => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -180,10 +215,51 @@ export const ActiveSessionView = ({
     }
   };
 
-  // Auto-scroll to bottom on new messages
+  // Smart auto-scroll to bottom on new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, fileTransfers]);
+    const totalItems = messages.length + fileTransfers.length;
+    if (totalItems === 0) {
+      prevItemsCountRef.current = 0;
+      return;
+    }
+
+    const isFirstLoad = prevItemsCountRef.current === 0;
+    prevItemsCountRef.current = totalItems;
+
+    if (isFirstLoad) {
+      scrollToBottom("auto");
+      return;
+    }
+
+    // Determine if the newest item was sent by the current user
+    const lastMsg = messages[messages.length - 1];
+    const lastTransfer = fileTransfers[fileTransfers.length - 1];
+    let sentByMe = false;
+
+    if (lastMsg) {
+      sentByMe =
+        lastMsg.senderId === sessionData.participantId || lastMsg.isLocal;
+    }
+    if (!sentByMe && lastTransfer) {
+      sentByMe =
+        lastTransfer.senderId === sessionData.participantId ||
+        lastTransfer.isLocal ||
+        lastTransfer.status === "SENDING";
+    }
+
+    if (sentByMe) {
+      // User sent message: always scroll to bottom
+      scrollToBottom("smooth");
+    } else {
+      // Another user or system sent message: check if user is near bottom
+      if (isNearBottomRef.current) {
+        scrollToBottom("smooth");
+      } else {
+        // Scrolled up: do not yank viewport, show 'New messages' indicator
+        setShowNewMessagesBtn(true);
+      }
+    }
+  }, [messages, fileTransfers, sessionData.participantId]);
 
   const isOwner = sessionData.isOwner;
 
@@ -587,13 +663,13 @@ export const ActiveSessionView = ({
       </div>
 
       {/* 3. MAIN DUAL-PANEL CONTAINER (From test.html) */}
-      <div className="flex-1 flex overflow-hidden relative min-h-0">
+      <div className="flex-1 flex overflow-hidden relative min-h-0 w-full">
         {/* LEFT SIDEBAR: PARTICIPANTS & SECURITY TELEMETRY (From test.html) */}
         <aside
           id="sidebar-panel"
           className={`w-72 lg:w-80 bg-white border-r border-[#e9edef] flex flex-col justify-between shrink-0 absolute lg:relative inset-y-0 left-0 z-30 transition-transform duration-200 ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-          } shadow-lg lg:shadow-none`}
+          } shadow-lg lg:shadow-none h-full min-h-0`}
         >
           {/* Sidebar Header: PARTICIPANTS (count) */}
           <div className="h-[60px] px-4 bg-[#f0f2f5] border-b border-[#e9edef] flex items-center justify-between shrink-0">
@@ -641,7 +717,7 @@ export const ActiveSessionView = ({
           </div>
 
           {/* Participants List from Original UI */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-2">
             {sessionData.participants.map((p) => {
               const isCurrentUser =
                 p.participantId === sessionData.participantId;
@@ -750,7 +826,7 @@ export const ActiveSessionView = ({
         </aside>
 
         {/* MAIN CHAT CANVAS (From test.html) */}
-        <main className="flex-1 flex flex-col chat-wallpaper relative overflow-hidden min-h-0">
+        <main className="flex-1 flex flex-col chat-wallpaper relative overflow-hidden min-h-0 h-full">
           {/* Mobile Sidebar Backdrop Overlay */}
           {sidebarOpen && (
             <div
@@ -791,7 +867,7 @@ export const ActiveSessionView = ({
 
           {/* Incoming Call In-Session Banner (Joiner notification) */}
           {incomingCall && !isOwner && callState !== "ACTIVE" && (
-            <div className="bg-[#fef9c3] border-b border-[#fde047] px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xs z-20">
+            <div className="bg-[#fef9c3] border-b border-[#fde047] px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xs z-20 shrink-0">
               <div className="flex items-center gap-3">
                 <span className="relative flex h-3.5 w-3.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00a884] opacity-75"></span>
@@ -840,26 +916,30 @@ export const ActiveSessionView = ({
 
           {/* Phase 3: Active P2P WebRTC Video / Audio Call Window */}
           {(callState === "ACTIVE" || (callState === "INVITING" && isOwner)) && (
-            <CallWindow
-              callType={callType}
-              localStream={localStream}
-              remoteStreams={remoteStreams}
-              participants={sessionData.participants}
-              myParticipantId={sessionData.participantId}
-              isOwner={isOwner}
-              isAudioMuted={isAudioMuted}
-              isVideoMuted={isVideoMuted}
-              onToggleAudio={onToggleAudio}
-              onToggleVideo={onToggleVideo}
-              onLeaveCall={onLeaveCall}
-              onEndCallForEveryone={onEndCallForEveryone}
-              warningMessage={callWarning}
-            />
+            <div className="shrink-0 px-4 pt-3 z-20">
+              <CallWindow
+                callType={callType}
+                localStream={localStream}
+                remoteStreams={remoteStreams}
+                participants={sessionData.participants}
+                myParticipantId={sessionData.participantId}
+                isOwner={isOwner}
+                isAudioMuted={isAudioMuted}
+                isVideoMuted={isVideoMuted}
+                onToggleAudio={onToggleAudio}
+                onToggleVideo={onToggleVideo}
+                onLeaveCall={onLeaveCall}
+                onEndCallForEveryone={onEndCallForEveryone}
+                warningMessage={callWarning}
+              />
+            </div>
           )}
 
           {/* Messages Viewport */}
           <div
+            ref={messagesContainerRef}
             id="messages-container"
+            onScroll={handleScroll}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
@@ -868,7 +948,7 @@ export const ActiveSessionView = ({
                 onSendFile(file);
               }
             }}
-            className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 z-10"
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 space-y-4 z-10"
           >
             {/* Empty State / Connection Banner from Original UI (test.html) */}
             {messages.length === 0 && fileTransfers.length === 0 && (
@@ -920,7 +1000,7 @@ export const ActiveSessionView = ({
             )}
 
             {/* Dynamic Container for Live User Messages & File Transfers */}
-            <div id="dynamic-messages" className="space-y-3">
+            <div id="dynamic-messages" className="flex flex-col space-y-2.5">
               {[...messages, ...fileTransfers].map((m) => {
                 if (m.isSystem) {
                   return (
@@ -947,9 +1027,9 @@ export const ActiveSessionView = ({
                   return (
                     <div
                       key={m.messageId || m.fileId}
-                      className={`flex flex-col ${
-                        isMe ? "items-end" : "items-start"
-                      } my-2`}
+                      className={`flex w-full ${
+                        isMe ? "justify-end" : "justify-start"
+                      } my-1`}
                     >
                       <FileMessage
                         message={m}
@@ -970,21 +1050,25 @@ export const ActiveSessionView = ({
                   return (
                     <div
                       key={m.messageId}
-                      className="max-w-[78%] sm:max-w-[65%] self-end ml-auto bg-[#d9fdd3] p-3 rounded-xl rounded-tr-none shadow-2xs text-sm relative border border-[#c1e8ba]"
+                      className="flex w-full justify-end"
                     >
-                      <div className="break-words text-[#111b21] leading-relaxed select-text">
-                        {m.text}
-                      </div>
-                      <div className="text-[10px] text-[#667781] text-right mt-1 flex justify-end items-center gap-1 select-none">
-                        <span>{timeStr}</span>
-                        {/* Blue double checkmarks */}
-                        <svg
-                          className="w-3.5 h-3.5 text-[#53bdeb]"
-                          fill="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
-                        </svg>
+                      <div
+                        className="w-fit min-w-[76px] max-w-[85%] sm:max-w-[70%] md:max-w-[560px] bg-[#d9fdd3] px-3 py-2 rounded-xl rounded-tr-none shadow-2xs text-sm relative border border-[#c1e8ba] transition-all"
+                      >
+                        <div className="break-words whitespace-pre-wrap text-[#111b21] leading-relaxed select-text text-sm">
+                          {m.text}
+                        </div>
+                        <div className="text-[10px] text-[#667781] text-right mt-1 flex justify-end items-center gap-1 select-none">
+                          <span>{timeStr}</span>
+                          {/* Blue double checkmarks */}
+                          <svg
+                            className="w-3.5 h-3.5 text-[#53bdeb] shrink-0"
+                            fill="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                          </svg>
+                        </div>
                       </div>
                     </div>
                   );
@@ -994,21 +1078,25 @@ export const ActiveSessionView = ({
                 return (
                   <div
                     key={m.messageId}
-                    className="max-w-[78%] sm:max-w-[65%] bg-white p-3 rounded-xl rounded-tl-none shadow-2xs text-sm relative border border-[#e9edef]"
+                    className="flex w-full justify-start"
                   >
-                    <div className="text-[11px] font-bold text-[#00a884] mb-0.5 flex items-center gap-1.5">
-                      <span>{m.senderName}</span>
-                      {m.isOwner && (
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#fef08a] text-[#854d0e] border border-[#facc15]">
-                          OWNER
-                        </span>
-                      )}
-                    </div>
-                    <div className="break-words text-[#111b21] leading-relaxed select-text">
-                      {m.text}
-                    </div>
-                    <div className="text-[10px] text-[#667781] text-right mt-1 select-none">
-                      {timeStr}
+                    <div
+                      className="w-fit min-w-[76px] max-w-[85%] sm:max-w-[70%] md:max-w-[560px] bg-white px-3 py-2 rounded-xl rounded-tl-none shadow-2xs text-sm relative border border-[#e9edef] transition-all"
+                    >
+                      <div className="text-[11px] font-bold text-[#00a884] mb-0.5 flex items-center gap-1.5">
+                        <span>{m.senderName}</span>
+                        {m.isOwner && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#fef08a] text-[#854d0e] border border-[#facc15]">
+                            OWNER
+                          </span>
+                        )}
+                      </div>
+                      <div className="break-words whitespace-pre-wrap text-[#111b21] leading-relaxed select-text text-sm">
+                        {m.text}
+                      </div>
+                      <div className="text-[10px] text-[#667781] text-right mt-1 select-none">
+                        {timeStr}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1028,6 +1116,33 @@ export const ActiveSessionView = ({
               <div ref={messagesEndRef} />
             </div>
           </div>
+
+          {/* Floating 'New messages' indicator when user has scrolled up */}
+          <AnimatePresence>
+            {showNewMessagesBtn && (
+              <motion.button
+                id="new-messages-indicator"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                onClick={() => scrollToBottom("smooth")}
+                className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-[#00a884] hover:bg-[#008f6f] text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg flex items-center gap-1.5 z-20 cursor-pointer transition-all active:scale-95"
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 5v14M19 12l-7 7-7-7" />
+                </svg>
+                <span>New messages</span>
+              </motion.button>
+            )}
+          </AnimatePresence>
 
           {/* BOTTOM MESSAGE INPUT BAR (From test.html) */}
           <footer
