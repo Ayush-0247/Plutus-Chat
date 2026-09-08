@@ -483,6 +483,36 @@ export default function App() {
       setUiState('DESTROYED');
     };
 
+    // 17. Ownership Transferred
+    const handleOwnershipTransferred = (data) => {
+      setActiveSessionAndRef((prev) => {
+        if (!prev) return prev;
+        const isMeNewOwner = prev.participantId === data.newOwnerParticipantId;
+        return {
+          ...prev,
+          ownerParticipantId: data.newOwnerParticipantId,
+          isOwner: isMeNewOwner,
+          participants: data.participants,
+        };
+      });
+    };
+
+    // 18. Message Reaction Updated
+    const handleMessageReactionUpdated = (data) => {
+      const { messageId, reactions } = data;
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.messageId === messageId) {
+            return {
+              ...msg,
+              reactions,
+            };
+          }
+          return msg;
+        })
+      );
+    };
+
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('session-created', handleSessionCreated);
@@ -501,6 +531,8 @@ export default function App() {
     socket.on('call-ended', handleCallEnded);
     socket.on('session-ending', handleSessionEnding);
     socket.on('session-destroyed', handleSessionDestroyed);
+    socket.on('ownership-transferred', handleOwnershipTransferred);
+    socket.on('message-reaction-updated', handleMessageReactionUpdated);
 
     if (socket.connected) {
       setIsConnected(true);
@@ -525,6 +557,8 @@ export default function App() {
       socket.off('call-ended', handleCallEnded);
       socket.off('session-ending', handleSessionEnding);
       socket.off('session-destroyed', handleSessionDestroyed);
+      socket.off('ownership-transferred', handleOwnershipTransferred);
+      socket.off('message-reaction-updated', handleMessageReactionUpdated);
     };
   }, [purgeAllSessionState, teardownCallState, callState]);
 
@@ -582,6 +616,58 @@ export default function App() {
     });
     purgeAllSessionState();
     setUiState('HOME');
+  };
+
+  const handleTransferOwnership = (newOwnerParticipantId, callback) => {
+    if (!activeSession || !activeSession.isOwner) return;
+    const socket = getSocket();
+    socket.emit(
+      'transfer-ownership',
+      {
+        sessionId: activeSession.sessionId,
+        participantId: activeSession.participantId,
+        newOwnerParticipantId,
+      },
+      (res) => {
+        if (typeof callback === 'function') callback(res);
+      }
+    );
+  };
+
+  const handleTransferAndLeaveSession = (newOwnerParticipantId) => {
+    if (!activeSession) return;
+    const socket = getSocket();
+    socket.emit(
+      'transfer-ownership',
+      {
+        sessionId: activeSession.sessionId,
+        participantId: activeSession.participantId,
+        newOwnerParticipantId,
+      },
+      (res) => {
+        if (res?.success) {
+          socket.emit('leave-session', {
+            sessionId: activeSession.sessionId,
+            participantId: activeSession.participantId,
+          });
+          purgeAllSessionState();
+          setUiState('HOME');
+        } else {
+          notifyUser(res?.message || 'Failed to transfer ownership');
+        }
+      }
+    );
+  };
+
+  const handleReactMessage = (messageId, emoji) => {
+    if (!activeSession) return;
+    const socket = getSocket();
+    socket.emit('react-message', {
+      sessionId: activeSession.sessionId,
+      participantId: activeSession.participantId,
+      messageId,
+      emoji,
+    });
   };
 
   const handleEndSession = () => {
@@ -870,6 +956,9 @@ export default function App() {
             onKickParticipant={handleKickParticipant}
             onLeaveSession={handleLeaveSession}
             onEndSession={handleEndSession}
+            onTransferOwnership={handleTransferOwnership}
+            onTransferAndLeaveSession={handleTransferAndLeaveSession}
+            onReactMessage={handleReactMessage}
             // Phase 3 WebRTC calling & P2P file transfers
             callState={callState}
             callType={callType}

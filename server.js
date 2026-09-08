@@ -20,6 +20,7 @@ import {
   deleteSessionRecord,
   addSessionBan,
   isParticipantBanned,
+  transferSessionOwnership,
 } from './src/server/services/sessionService.js';
 import { initSessionCleanup } from './src/server/utils/sessionCleanup.js';
 
@@ -138,6 +139,9 @@ async function executeHardDestruction(sessionId) {
     }
     session.participants.clear();
     session.bannedParticipantIds.clear();
+    if (session.messageReactions) {
+      session.messageReactions.clear();
+    }
     sessions.delete(normId);
   }
 
@@ -264,6 +268,7 @@ io.on('connection', (socket) => {
         ownerSocketId: socket.id,
         participants: new Map(),
         bannedParticipantIds: new Set(),
+        messageReactions: new Map(),
         status: 'ACTIVE',
         createdAt: Date.now(),
         destroyAt: null,
@@ -361,6 +366,7 @@ io.on('connection', (socket) => {
           ownerSocketId: null,
           participants: new Map(),
           bannedParticipantIds: new Set(),
+          messageReactions: new Map(),
           status: dbRecord.status,
           createdAt: dbRecord.createdAt ? new Date(dbRecord.createdAt).getTime() : Date.now(),
           destroyAt: null,
@@ -464,6 +470,7 @@ io.on('connection', (socket) => {
         senderName: participant.username,
         isOwner: participant.isOwner,
         text: cleanText,
+        reactions: {},
         timestamp: Date.now(),
       };
 
@@ -474,6 +481,87 @@ io.on('connection', (socket) => {
       if (typeof callback === 'function') callback({ success: true, messageId: messageObject.messageId });
     } catch (err) {
       if (typeof callback === 'function') callback({ success: false, message: 'Failed to relay message' });
+    }
+  });
+
+  // 3b. React to Message (WhatsApp / Instagram style reactions)
+  socket.on('react-message', (payload = {}, callback) => {
+    try {
+      const { sessionId, participantId, messageId, emoji } = payload;
+      const normId = sessionId?.toUpperCase();
+      const session = sessions.get(normId);
+
+      if (!session || session.status !== 'ACTIVE') {
+        if (typeof callback === 'function') callback({ success: false, message: 'Session is not active' });
+        return;
+      }
+
+      if (session.bannedParticipantIds.has(participantId)) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Participant is banned' });
+        return;
+      }
+
+      const participant = session.participants.get(participantId);
+      if (!participant) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Unauthorized sender' });
+        return;
+      }
+
+      if (!messageId || !emoji) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Missing parameters' });
+        return;
+      }
+
+      if (!session.messageReactions) {
+        session.messageReactions = new Map();
+      }
+
+      let msgReactions = session.messageReactions.get(messageId);
+      if (!msgReactions) {
+        msgReactions = new Map();
+        session.messageReactions.set(messageId, msgReactions);
+      }
+
+      let emojiUsers = msgReactions.get(emoji);
+      if (!emojiUsers) {
+        emojiUsers = new Map();
+        msgReactions.set(emoji, emojiUsers);
+      }
+
+      let action = 'add';
+      if (emojiUsers.has(participantId)) {
+        emojiUsers.delete(participantId);
+        if (emojiUsers.size === 0) {
+          msgReactions.delete(emoji);
+        }
+        action = 'remove';
+      } else {
+        emojiUsers.set(participantId, participant.username);
+        action = 'add';
+      }
+
+      const serializedReactions = {};
+      for (const [em, usersMap] of msgReactions.entries()) {
+        serializedReactions[em] = Array.from(usersMap.entries()).map(([pId, uName]) => ({
+          participantId: pId,
+          username: uName,
+        }));
+      }
+
+      const room = getSessionRoom(normId);
+      io.to(room).emit('message-reaction-updated', {
+        sessionId: normId,
+        messageId,
+        reactions: serializedReactions,
+        participantId,
+        username: participant.username,
+        emoji,
+        action,
+      });
+
+      if (typeof callback === 'function') callback({ success: true, reactions: serializedReactions, action });
+    } catch (err) {
+      if (typeof callback === 'function') callback({ success: false, message: 'Failed to update reaction' });
     }
   });
 
@@ -641,6 +729,83 @@ io.on('connection', (socket) => {
       if (typeof callback === 'function') callback({ success: true });
     } catch (err) {
       if (typeof callback === 'function') callback({ success: false, message: 'Error ending session' });
+    }
+  });
+
+  // 7b. Owner Transfers Ownership to another participant
+  socket.on('transfer-ownership', async (payload = {}, callback) => {
+    try {
+      const { sessionId, participantId, newOwnerParticipantId } = payload;
+      const normId = sessionId?.toUpperCase();
+      const session = sessions.get(normId);
+
+      if (!session || session.status !== 'ACTIVE') {
+        if (typeof callback === 'function') callback({ success: false, message: 'Session is not active' });
+        return;
+      }
+
+      if (participantId !== session.ownerParticipantId) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Only session owner can transfer ownership.' });
+        return;
+      }
+
+      if (!session.participants.has(newOwnerParticipantId)) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Target participant not found in session.' });
+        return;
+      }
+
+      if (newOwnerParticipantId === session.ownerParticipantId) {
+        if (typeof callback === 'function') callback({ success: false, message: 'Target participant is already the owner.' });
+        return;
+      }
+
+      const oldOwner = session.participants.get(participantId);
+      const newOwner = session.participants.get(newOwnerParticipantId);
+
+      // Update RAM state
+      oldOwner.isOwner = false;
+      newOwner.isOwner = true;
+      session.ownerParticipantId = newOwnerParticipantId;
+      session.ownerSocketId = newOwner.socketId;
+
+      // If an active call exists, preserve it and update initiator if needed
+      if (session.activeCall && session.activeCall.initiatedBy === participantId) {
+        session.activeCall.initiatedBy = newOwnerParticipantId;
+      }
+
+      // Update persistent metadata
+      await transferSessionOwnership(normId, newOwnerParticipantId);
+
+      const room = getSessionRoom(normId);
+      const updatedParticipants = getParticipantsArray(session);
+
+      // Broadcast ownership transfer to all in room
+      io.to(room).emit('ownership-transferred', {
+        sessionId: normId,
+        previousOwnerParticipantId: participantId,
+        previousOwnerUsername: oldOwner.username,
+        newOwnerParticipantId,
+        newOwnerUsername: newOwner.username,
+        participants: updatedParticipants,
+      });
+
+      // System chat announcement
+      const systemMsg = {
+        messageId: crypto.randomUUID(),
+        senderId: 'SYSTEM',
+        senderName: 'SYSTEM',
+        isOwner: false,
+        text: `👑 Session ownership transferred to ${newOwner.username}. ${oldOwner.username} is now a participant and can leave freely.`,
+        timestamp: Date.now(),
+        isSystem: true,
+      };
+      io.to(room).emit('receive-message', systemMsg);
+
+      console.log({ event: 'ownership-transferred', sessionId: normId, from: participantId, to: newOwnerParticipantId });
+      if (typeof callback === 'function') callback({ success: true, newOwnerParticipantId });
+    } catch (err) {
+      console.error('[Socket] transfer-ownership error:', err.message);
+      if (typeof callback === 'function') callback({ success: false, message: 'Error transferring ownership' });
     }
   });
 

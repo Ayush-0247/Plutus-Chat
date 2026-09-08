@@ -33,6 +33,7 @@ import {
 import { CallWindow } from "./Call/CallWindow.jsx";
 import { FileMessage } from "./File/FileMessage.jsx";
 import { AddDeviceModal } from "./AddDeviceModal.jsx";
+import { MessageReactions } from "./MessageReactions.jsx";
 
 export const ActiveSessionView = ({
   sessionData,
@@ -43,6 +44,9 @@ export const ActiveSessionView = ({
   onKickParticipant,
   onLeaveSession,
   onEndSession,
+  onTransferOwnership,
+  onTransferAndLeaveSession,
+  onReactMessage,
   // Phase 3 WebRTC calling & P2P file transfer
   callState = "IDLE",
   callType = "video",
@@ -71,6 +75,9 @@ export const ActiveSessionView = ({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [kickTarget, setKickTarget] = useState(null);
+  const [transferTarget, setTransferTarget] = useState(null);
+  const [showOwnerLeaveModal, setShowOwnerLeaveModal] = useState(false);
+  const [selectedNewOwnerId, setSelectedNewOwnerId] = useState("");
   const [showAddDeviceModal, setShowAddDeviceModal] = useState(false);
 
   // Audio mute state
@@ -630,25 +637,39 @@ export const ActiveSessionView = ({
 
           {/* Terminate Session Button (Owner) or Leave Session (Joiner) */}
           {isOwner ? (
-            <button
-              id="terminate-btn"
-              onClick={() => setShowEndConfirm(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#ea0038] hover:bg-[#c90030] text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
-            >
-              <svg
-                className="w-3.5 h-3.5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <div className="flex items-center gap-1.5">
+              {/* Owner Leave Button: Allows leaving in mid by transferring ownership */}
+              <button
+                id="owner-leave-btn"
+                onClick={() => {
+                  const otherParticipants = sessionData.participants.filter(
+                    (p) => p.participantId !== sessionData.participantId
+                  );
+                  if (otherParticipants.length > 0) {
+                    setSelectedNewOwnerId(otherParticipants[0].participantId);
+                    setShowOwnerLeaveModal(true);
+                  } else {
+                    setShowEndConfirm(true);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f0f2f5] hover:bg-[#e9edef] border border-[#e9edef] text-[#54656f] hover:text-[#111b21] text-xs font-bold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
+                title="Leave session without ending by transferring ownership"
               >
-                <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
-                <line x1="12" y1="2" x2="12" y2="12" />
-              </svg>
-              <span>TERMINATE SESSION</span>
-            </button>
+                <LogOut className="w-3.5 h-3.5" />
+                <span>LEAVE</span>
+              </button>
+
+              <button
+                id="terminate-btn"
+                onClick={() => setShowEndConfirm(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#ea0038] hover:bg-[#c90030] text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
+                title="Terminate session and wipe RAM buffer for everyone"
+              >
+                <Power className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">TERMINATE</span>
+                <span className="sm:hidden">END</span>
+              </button>
+            </div>
           ) : (
             <button
               id="leave-session-btn"
@@ -774,16 +795,27 @@ export const ActiveSessionView = ({
                       </span>
                     )}
 
-                    {/* Kick participant button for owner */}
+                    {/* Owner controls: Make Owner & Kick participant */}
                     {isOwner && !p.isOwner && (
-                      <button
-                        onClick={() => setKickTarget(p)}
-                        title={`Kick and permanently ban ${p.username}`}
-                        className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer ml-1"
-                      >
-                        <UserX className="w-3 h-3" />
-                        <span>KICK</span>
-                      </button>
+                      <div className="flex items-center gap-1 ml-1">
+                        <button
+                          onClick={() => setTransferTarget(p)}
+                          title={`Transfer session ownership to ${p.username}`}
+                          className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Crown className="w-3 h-3 text-amber-600" />
+                          <span className="hidden sm:inline">MAKE OWNER</span>
+                        </button>
+
+                        <button
+                          onClick={() => setKickTarget(p)}
+                          title={`Kick and permanently ban ${p.username}`}
+                          className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <UserX className="w-3 h-3" />
+                          <span>KICK</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1045,57 +1077,83 @@ export const ActiveSessionView = ({
                   minute: "2-digit",
                 });
 
-                // Sent Message Bubble (isMe) with soft mint background & blue double checks from test.html
+                // Sent Message Bubble (isMe) with soft mint background & blue double checks
                 if (isMe) {
                   return (
                     <div
                       key={m.messageId}
-                      className="flex w-full justify-end"
+                      className="flex w-full justify-end my-1"
                     >
-                      <div
-                        className="w-fit min-w-[76px] max-w-[85%] sm:max-w-[70%] md:max-w-[560px] bg-[#d9fdd3] px-3 py-2 rounded-xl rounded-tr-none shadow-2xs text-sm relative border border-[#c1e8ba] transition-all"
-                      >
-                        <div className="break-words whitespace-pre-wrap text-[#111b21] leading-relaxed select-text text-sm">
-                          {m.text}
-                        </div>
-                        <div className="text-[10px] text-[#667781] text-right mt-1 flex justify-end items-center gap-1 select-none">
-                          <span>{timeStr}</span>
-                          {/* Blue double checkmarks */}
-                          <svg
-                            className="w-3.5 h-3.5 text-[#53bdeb] shrink-0"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
-                          </svg>
+                      <div className="relative group max-w-[85%] sm:max-w-[70%] md:max-w-[560px] flex flex-col items-end">
+                        <div
+                          onDoubleClick={() => onReactMessage?.(m.messageId, "❤️")}
+                          className="w-fit min-w-[76px] bg-[#d9fdd3] px-3 py-2 rounded-xl rounded-tr-none shadow-2xs text-sm relative border border-[#c1e8ba] transition-all"
+                        >
+                          <div className="break-words whitespace-pre-wrap text-[#111b21] leading-relaxed select-text text-sm">
+                            {m.text}
+                          </div>
+                          <div className="text-[10px] text-[#667781] text-right mt-1 flex justify-end items-center gap-1 select-none">
+                            <span>{timeStr}</span>
+                            {/* Blue double checkmarks */}
+                            <svg
+                              className="w-3.5 h-3.5 text-[#53bdeb] shrink-0"
+                              fill="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                            </svg>
+                          </div>
+
+                          {/* WhatsApp / Instagram reactions */}
+                          <MessageReactions
+                            messageId={m.messageId}
+                            reactions={m.reactions}
+                            currentParticipantId={sessionData.participantId}
+                            onReact={onReactMessage}
+                            align="right"
+                            canReact={true}
+                          />
                         </div>
                       </div>
                     </div>
                   );
                 }
 
-                // Received Message Bubble (peer) with clean white background from test.html
+                // Received Message Bubble (peer) with clean white background
                 return (
                   <div
                     key={m.messageId}
-                    className="flex w-full justify-start"
+                    className="flex w-full justify-start my-1"
                   >
-                    <div
-                      className="w-fit min-w-[76px] max-w-[85%] sm:max-w-[70%] md:max-w-[560px] bg-white px-3 py-2 rounded-xl rounded-tl-none shadow-2xs text-sm relative border border-[#e9edef] transition-all"
-                    >
-                      <div className="text-[11px] font-bold text-[#00a884] mb-0.5 flex items-center gap-1.5">
-                        <span>{m.senderName}</span>
-                        {m.isOwner && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#fef08a] text-[#854d0e] border border-[#facc15]">
-                            OWNER
-                          </span>
-                        )}
-                      </div>
-                      <div className="break-words whitespace-pre-wrap text-[#111b21] leading-relaxed select-text text-sm">
-                        {m.text}
-                      </div>
-                      <div className="text-[10px] text-[#667781] text-right mt-1 select-none">
-                        {timeStr}
+                    <div className="relative group max-w-[85%] sm:max-w-[70%] md:max-w-[560px] flex flex-col items-start">
+                      <div
+                        onDoubleClick={() => onReactMessage?.(m.messageId, "❤️")}
+                        className="w-fit min-w-[76px] bg-white px-3 py-2 rounded-xl rounded-tl-none shadow-2xs text-sm relative border border-[#e9edef] transition-all"
+                      >
+                        <div className="text-[11px] font-bold text-[#00a884] mb-0.5 flex items-center gap-1.5">
+                          <span>{m.senderName}</span>
+                          {m.isOwner && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#fef08a] text-[#854d0e] border border-[#facc15]">
+                              OWNER
+                            </span>
+                          )}
+                        </div>
+                        <div className="break-words whitespace-pre-wrap text-[#111b21] leading-relaxed select-text text-sm">
+                          {m.text}
+                        </div>
+                        <div className="text-[10px] text-[#667781] text-right mt-1 select-none">
+                          {timeStr}
+                        </div>
+
+                        {/* WhatsApp / Instagram reactions */}
+                        <MessageReactions
+                          messageId={m.messageId}
+                          reactions={m.reactions}
+                          currentParticipantId={sessionData.participantId}
+                          onReact={onReactMessage}
+                          align="left"
+                          canReact={true}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1357,6 +1415,150 @@ export const ActiveSessionView = ({
               >
                 Kick & Ban
               </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* 8. TRANSFER OWNERSHIP CONFIRMATION MODAL (From Sidebar) */}
+      {transferTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md bg-white rounded-2xl border border-[#e9edef] p-6 shadow-2xl font-sans"
+          >
+            <div className="flex items-center gap-3 text-amber-600 mb-4 pb-3 border-b border-[#e9edef]">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+                <Crown className="w-5 h-5 text-amber-600" />
+              </div>
+              <h3 className="text-base font-bold text-[#111b21]">
+                Transfer Session Ownership?
+              </h3>
+            </div>
+            <p className="text-sm text-[#54656f] leading-relaxed mb-3">
+              Transfer full ownership of this session to{" "}
+              <strong className="text-[#111b21] font-bold">
+                {transferTarget.username}
+              </strong>
+              ?
+            </p>
+            <div className="text-xs text-[#854d0e] leading-relaxed mb-6 p-3 bg-[#fef9c3] rounded-xl border border-[#fde047]">
+              The new owner will gain complete administrative control (call controls, kicking participants, and ending the session). You will remain in the session as an active participant and can leave freely without terminating the session.
+            </div>
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                onClick={() => setTransferTarget(null)}
+                className="px-4 py-2 rounded-xl bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const targetId = transferTarget.participantId;
+                  const targetName = transferTarget.username;
+                  setTransferTarget(null);
+                  if (typeof onTransferOwnership === "function") {
+                    onTransferOwnership(targetId, (res) => {
+                      if (res?.success) {
+                        triggerToast(`Ownership transferred to ${targetName}`);
+                      }
+                    });
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-[#f59e0b] hover:bg-[#d97706] text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-2xs flex items-center gap-1.5"
+              >
+                <Crown className="w-3.5 h-3.5" />
+                <span>Confirm Transfer</span>
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* 9. OWNER LEAVE IN MID (Transfer Ownership & Leave) MODAL */}
+      {showOwnerLeaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md bg-white rounded-2xl border border-[#e9edef] p-6 shadow-2xl font-sans"
+          >
+            <div className="flex items-center gap-3 text-[#00a884] mb-4 pb-3 border-b border-[#e9edef]">
+              <div className="w-10 h-10 rounded-xl bg-[#e7f7f3] flex items-center justify-center shrink-0">
+                <Crown className="w-5 h-5 text-[#00a884]" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#111b21]">
+                  Leave Session as Owner
+                </h3>
+                <p className="text-xs text-[#667781]">
+                  Transfer ownership so the meet continues running
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-[#54656f] leading-relaxed mb-4">
+              To leave the meet without terminating the session for other participants, select a joiner to take over as the new session owner:
+            </p>
+
+            {/* Joiners selection dropdown */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#54656f] mb-1.5">
+                Select New Owner
+              </label>
+              <select
+                value={selectedNewOwnerId}
+                onChange={(e) => setSelectedNewOwnerId(e.target.value)}
+                className="w-full bg-[#f0f2f5] border border-[#e9edef] text-[#111b21] rounded-xl px-3.5 py-2.5 text-sm font-medium focus:outline-none focus:border-[#00a884] cursor-pointer"
+              >
+                {sessionData.participants
+                  .filter((p) => p.participantId !== sessionData.participantId)
+                  .map((p) => (
+                    <option key={p.participantId} value={p.participantId}>
+                      {p.username}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="p-3 bg-[#e7f7f3] rounded-xl border border-[#00a884]/30 text-xs text-[#008069] mb-6 leading-relaxed">
+              The selected participant will become the new session owner. The session will remain active and uninterrupted after you leave.
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <button
+                onClick={() => {
+                  setShowOwnerLeaveModal(false);
+                  setShowEndConfirm(true);
+                }}
+                className="text-xs text-rose-600 hover:text-rose-700 font-semibold underline cursor-pointer"
+              >
+                End for everyone
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowOwnerLeaveModal(false)}
+                  className="px-4 py-2 rounded-xl bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (!selectedNewOwnerId) return;
+                    setShowOwnerLeaveModal(false);
+                    if (typeof onTransferAndLeaveSession === "function") {
+                      onTransferAndLeaveSession(selectedNewOwnerId);
+                    }
+                  }}
+                  disabled={!selectedNewOwnerId}
+                  className="px-4 py-2 rounded-xl bg-[#00a884] hover:bg-[#008f6f] disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-2xs flex items-center gap-1.5"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Transfer & Leave</span>
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>

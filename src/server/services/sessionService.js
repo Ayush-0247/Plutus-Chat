@@ -113,6 +113,29 @@ export async function updateSessionStatus(sessionId, status, endingReason = null
 }
 
 /**
+ * Transfers session ownership to a new participant.
+ */
+export async function transferSessionOwnership(sessionId, newOwnerParticipantId) {
+    const normId = sessionId.toUpperCase();
+
+    if (isDatabaseConnected()) {
+        try {
+            await Session.updateOne(
+                { sessionId: normId },
+                { $set: { ownerParticipantId: newOwnerParticipantId } }
+            );
+        } catch (error) {
+            console.error('[SessionService] Database ownership transfer error:', error.message);
+        }
+    }
+
+    const mem = inMemorySessionMeta.get(normId);
+    if (mem) {
+        mem.ownerParticipantId = newOwnerParticipantId;
+    }
+}
+
+/**
  * Deletes persistent session metadata and associated ban records upon hard destruction.
  * Implements PRD Section 40: "Once a session is destroyed, its persistent session metadata should also be deleted."
  */
