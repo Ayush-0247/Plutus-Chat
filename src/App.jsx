@@ -821,7 +821,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f0f2f5] text-[#111b21] flex flex-col font-sans selection:bg-[#00a884] selection:text-white">
+    <div className="h-full h-[100dvh] bg-[#f0f2f5] text-[#111b21] flex flex-col font-sans selection:bg-[#00a884] selection:text-white overflow-hidden">
       {/* Navigation Header (Shown on Home, Creating, Joining, Destroyed, Kicked screens) */}
       {uiState !== 'ACTIVE' && (
         <Navbar
@@ -832,7 +832,7 @@ export default function App() {
       )}
 
       {/* Main View Router */}
-      <main className={`flex-1 flex flex-col ${uiState === 'ACTIVE' ? 'h-screen overflow-hidden' : ''}`}>
+      <main className={`flex-1 flex flex-col min-h-0 ${uiState === 'ACTIVE' ? 'h-full overflow-hidden' : 'overflow-y-auto'}`}>
         {uiState === 'HOME' && (
           <HomeView
             onCreateClick={() => setUiState('CREATING')}

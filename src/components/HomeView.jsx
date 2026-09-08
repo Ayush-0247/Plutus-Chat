@@ -63,11 +63,12 @@ export const HomeView = ({
               <h2 className="text-lg font-bold text-[#111b21] tracking-tight">
                 Start Secure Line
               </h2>
-              <p className="text-xs text-[#54656f] mt-1 leading-relaxed">
-                Initialize as <strong>Owner</strong>. Get cryptographic credentials,
+              {/* <p className="text-xs text-[#54656f] mt-1 leading-relaxed">
+                Initialize as <strong>Owner</strong>.
+                 Get cryptographic credentials,
                 QR code for instant device joining, manage participants, kick unwanted users,
                 and control hard-wipe termination.
-              </p>
+              </p> */}
             </div>
 
             {/* <div className="pt-2 border-t border-[#f0f2f5] space-y-1.5 text-xs text-[#54656f]">
@@ -116,11 +117,11 @@ export const HomeView = ({
               <h2 className="text-lg font-bold text-[#111b21] tracking-tight">
                 Join Existing Line
               </h2>
-              <p className="text-xs text-[#54656f] mt-1 leading-relaxed">
+              {/* <p className="text-xs text-[#54656f] mt-1 leading-relaxed">
                 Connect using an active Session ID and secret passkey, or simply
                 scan an owner's QR code. Enjoy zero-trace communication with voluntary
                 departure rights.
-              </p>
+              </p> */}
             </div>
 
             {/* <div className="pt-2 border-t border-[#f0f2f5] space-y-1.5 text-xs text-[#54656f]">

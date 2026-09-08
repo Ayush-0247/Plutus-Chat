@@ -1,6 +1,16 @@
 @import "tailwindcss";
 
 @layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    height: 100dvh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background-color: #f0f2f5;
@@ -26,6 +36,12 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* Specific scrollbar styling for chat container */
+#messages-container {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 /* Clean minimalism chat background doodle wallpaper from test.html */
@@ -55,4 +71,3 @@
 .pulse-indicator {
   animation: pulse-dot 2s infinite ease-in-out;
 }
-
