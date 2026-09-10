@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>plutus://session</title>
+    <title>Plutus</title>
     <meta
       name="description"
-      content="Plutus: an ephemeral, end-to-end encrypted terminal session."
+      content="Plutus: an ephemeral, end-to-end encrypted chat session."
     />
 
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -14,443 +14,243 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
 
     <style>
       :root {
-        --void: #0a0c11;
-        --panel: #10131a;
-        --panel-alt: #151922;
-        --line: #262b38;
-        --line-soft: #1c2029;
-        --ink: #dde1ea;
-        --ink-dim: #6b7385;
-        --ink-faint: #454c5e;
-        --amber: #e3a13e;
-        --amber-dim: #a9782f;
-        --amber-glow: rgba(227, 161, 62, 0.18);
-        --cyan: #4fb3bf;
-        --red: #d9564d;
-        --green: #4caf7d;
+        --bg: #f8f6f3;
+        --surface: #ffffff;
+        --sunken: #f1ede9;
+        --border: #e8e2dc;
+        --ink: #241b20;
+        --ink-soft: #756a6f;
+        --ink-faint: #ab9fa3;
+        --plum: #7a2048;
+        --plum-dark: #601a39;
+        --plum-tint: #f8ecf1;
+        --plum-tint-border: #f0d6e2;
+        --green: #3d9868;
+        --green-tint: #e7f5ee;
+        --red: #c1443a;
       }
       * {
         box-sizing: border-box;
       }
-      html,
       body {
-        height: 100%;
         margin: 0;
-        background: var(--void);
+        height: 100%;
+        background: var(--bg);
         color: var(--ink);
-        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-family:
+          "Inter",
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
         -webkit-font-smoothing: antialiased;
         overflow: hidden;
       }
-      body {
-        background-image:
-          radial-gradient(
-            ellipse at 50% -10%,
-            rgba(227, 161, 62, 0.06),
-            transparent 55%
-          ),
-          radial-gradient(
-            ellipse at 50% 110%,
-            rgba(79, 179, 191, 0.04),
-            transparent 55%
-          );
+      .font-display {
+        font-family: "Sora", "Inter", sans-serif;
       }
-      .scanlines {
-        background-image: repeating-linear-gradient(
-          to bottom,
-          rgba(255, 255, 255, 0.014) 0px,
-          rgba(255, 255, 255, 0.014) 1px,
-          transparent 1px,
-          transparent 3px
-        );
-      }
+
       ::-webkit-scrollbar {
-        width: 6px;
+        width: 5px;
       }
       ::-webkit-scrollbar-track {
         background: transparent;
       }
       ::-webkit-scrollbar-thumb {
-        background: var(--line);
+        background: #d8d1cb;
         border-radius: 9999px;
       }
-      ::-webkit-scrollbar-thumb:hover {
-        background: var(--ink-faint);
-      }
 
-      @keyframes boot-in {
-        0% {
-          opacity: 0;
-        }
-        8% {
-          opacity: 1;
-        }
-        11% {
-          opacity: 0.3;
-        }
-        16% {
-          opacity: 1;
-        }
-        100% {
-          opacity: 1;
-        }
-      }
-      .boot {
-        animation: boot-in 0.7s steps(1) both;
-      }
-
-      @keyframes blink {
-        0%,
-        45% {
-          opacity: 1;
-        }
-        50%,
-        95% {
-          opacity: 0;
-        }
-        100% {
-          opacity: 1;
-        }
-      }
-      .caret {
-        animation: blink 1.05s step-end infinite;
-      }
-
-      @keyframes row-in {
+      @keyframes rise {
         from {
           opacity: 0;
-          transform: translateY(4px);
+          transform: translateY(8px);
         }
         to {
           opacity: 1;
           transform: translateY(0);
         }
       }
-      .row-in {
-        animation: row-in 0.18s ease-out both;
+      .rise-in {
+        animation: rise 0.25s ease-out both;
       }
 
-      @keyframes drop-in {
+      @keyframes sheet-up {
         from {
-          opacity: 0;
-          transform: translateY(-6px);
+          transform: translateY(100%);
         }
         to {
-          opacity: 1;
           transform: translateY(0);
         }
       }
-      .drop-in {
-        animation: drop-in 0.16s ease-out both;
+      .sheet-up {
+        animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+      }
+
+      @keyframes fade {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      .fade-in {
+        animation: fade 0.2s ease-out both;
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .boot,
-        .caret,
-        .row-in,
-        .drop-in {
+        .rise-in,
+        .sheet-up,
+        .fade-in {
           animation: none !important;
         }
       }
 
       button:focus-visible,
       input:focus-visible {
-        outline: 1.5px solid var(--amber);
+        outline: 2px solid var(--plum);
         outline-offset: 2px;
-      }
-
-      .dot-btn {
-        transition:
-          filter 0.15s ease,
-          transform 0.1s ease;
-      }
-      .dot-btn:hover {
-        filter: brightness(1.3);
-      }
-      .dot-btn:active {
-        transform: scale(0.9);
       }
     </style>
   </head>
-  <body class="h-full flex items-center justify-center p-0 sm:p-6 select-none">
-    <div class="scanlines fixed inset-0 pointer-events-none"></div>
-
-    <!-- TERMINAL WINDOW -->
-    <div
-      id="terminal"
-      class="boot w-full sm:max-w-2xl h-full sm:h-[88vh] flex flex-col rounded-none sm:rounded-2xl overflow-hidden relative"
-      style="
-        background: var(--panel);
-        border: 1px solid var(--line);
-        box-shadow:
-          0 0 0 1px rgba(0, 0, 0, 0.4),
-          0 30px 80px -20px rgba(227, 161, 62, 0.08);
-      "
+  <body class="h-full flex flex-col select-none">
+    <!-- MINIMAL TOP BAR -->
+    <header
+      class="h-16 px-4 sm:px-6 flex items-center justify-between shrink-0"
+      style="background: var(--bg)"
     >
-      <!-- CHROME BAR -->
-      <div
-        class="h-12 px-4 flex items-center justify-between shrink-0 relative z-30"
-        style="
-          background: var(--panel-alt);
-          border-bottom: 1px solid var(--line);
-        "
+      <button
+        onclick="toggleSheet()"
+        class="flex items-center gap-3 cursor-pointer group"
       >
-        <div class="flex items-center gap-4">
-          <div class="flex items-center gap-2">
-            <button
-              onclick="terminateSession()"
-              title="End session"
-              class="dot-btn w-3 h-3 rounded-full cursor-pointer"
-              style="background: var(--red)"
-            ></button>
-            <button
-              onclick="toggleAudio()"
-              title="Mute notifications"
-              class="dot-btn w-3 h-3 rounded-full cursor-pointer"
-              style="background: var(--amber)"
-            ></button>
-            <button
-              onclick="toggleInfo()"
-              title="Session info"
-              class="dot-btn w-3 h-3 rounded-full cursor-pointer"
-              style="background: var(--green)"
-            ></button>
-          </div>
+        <div class="relative shrink-0">
           <div
-            class="hidden xs:block text-[12px]"
-            style="color: var(--ink-dim)"
+            class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[13px] text-white"
+            style="background: var(--plum)"
           >
-            plutus<span style="color: var(--ink-faint)">://</span>session<span
-              style="color: var(--ink-faint)"
-              >/</span
-            ><span style="color: var(--amber)">3sdu4h</span>
+            AR
+          </div>
+          <span
+            class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full"
+            style="background: var(--green); border: 2px solid var(--bg)"
+          ></span>
+        </div>
+        <div class="text-left">
+          <div
+            class="font-display font-bold text-[15px] leading-tight"
+            style="color: var(--ink)"
+          >
+            Ayush Raj
+          </div>
+          <div class="text-[12px]" style="color: var(--ink-soft)">
+            Online, encrypted session
           </div>
         </div>
+      </button>
 
-        <div
-          class="flex items-center gap-3 text-[11px]"
-          style="color: var(--ink-faint)"
+      <button
+        onclick="toggleSheet()"
+        class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors"
+        style="
+          background: var(--surface);
+          border: 1px solid var(--border);
+          color: var(--ink-soft);
+        "
+        title="Session details"
+      >
+        <svg
+          class="w-4.5 h-4.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
         >
-          <span class="hidden sm:flex items-center gap-1.5">
-            <span
-              id="mic-status-dot"
-              class="w-1.5 h-1.5 rounded-full"
-              style="background: var(--green)"
-            ></span>
-            <span id="mic-status-text">live</span>
-          </span>
-          <button
-            onclick="toggleInfo()"
-            class="p-1.5 rounded-md hover:bg-white/5 cursor-pointer"
-            title="Session info"
+          <circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
+    </header>
+
+    <!-- CHAT -->
+    <main class="flex-1 overflow-y-auto px-4 sm:px-6" id="messages-container">
+      <div class="max-w-lg mx-auto pt-2 pb-6">
+        <!-- Empty state -->
+        <div id="empty-state" class="rise-in text-center py-14">
+          <div
+            class="w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center"
+            style="background: var(--plum-tint)"
           >
             <svg
-              class="w-4 h-4"
+              class="w-6 h-6"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="currentColor"
+              stroke="var(--plum)"
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
             >
-              <circle cx="12" cy="12" r="9" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
+              <path
+                d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+                opacity="0"
+              />
+              <rect x="4" y="10" width="16" height="10" rx="2.5" />
+              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
             </svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- SESSION INFO DROPDOWN -->
-      <div
-        id="info-backdrop"
-        onclick="toggleInfo()"
-        class="hidden fixed inset-0 z-20"
-      ></div>
-      <div
-        id="info-panel"
-        class="hidden drop-in absolute left-0 right-0 top-12 z-30 mx-3 mt-2 rounded-xl p-4 text-[12.5px]"
-        style="
-          background: var(--panel-alt);
-          border: 1px solid var(--line);
-          box-shadow: 0 20px 50px -15px rgba(0, 0, 0, 0.6);
-        "
-      >
-        <div class="grid grid-cols-2 gap-3 mb-3">
-          <div
-            class="rounded-lg p-3"
-            style="background: var(--panel); border: 1px solid var(--line-soft)"
-          >
-            <div class="flex items-center justify-between mb-1.5">
-              <span style="color: var(--ink-faint)">session_id</span>
-              <button
-                onclick="copyText('3SDU4H')"
-                style="color: var(--ink-dim)"
-                class="hover:text-white cursor-pointer"
-                title="Copy"
-              >
-                <svg
-                  class="w-3.5 h-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <rect x="9" y="9" width="13" height="13" rx="2" />
-                  <path
-                    d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div class="font-semibold" style="color: var(--amber)">3SDU4H</div>
           </div>
-          <div
-            class="rounded-lg p-3"
-            style="background: var(--panel); border: 1px solid var(--line-soft)"
+          <h2
+            class="font-display font-bold text-[17px]"
+            style="color: var(--ink)"
           >
-            <div class="flex items-center justify-between mb-1.5">
-              <span style="color: var(--ink-faint)">passkey</span>
-              <button
-                onclick="copyText('SOLAR-643')"
-                style="color: var(--ink-dim)"
-                class="hover:text-white cursor-pointer"
-                title="Copy"
-              >
-                <svg
-                  class="w-3.5 h-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <rect x="9" y="9" width="13" height="13" rx="2" />
-                  <path
-                    d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div class="font-semibold" style="color: var(--cyan)">
-              SOLAR-643
-            </div>
-          </div>
+            You're all set
+          </h2>
+          <p
+            class="mt-1.5 text-[13.5px] max-w-[240px] mx-auto leading-relaxed"
+            style="color: var(--ink-soft)"
+          >
+            Say hello. Messages stay in memory and disappear once this session
+            ends.
+          </p>
         </div>
 
-        <div
-          class="rounded-lg p-3 mb-3 flex items-center justify-between"
-          style="background: var(--panel); border: 1px solid var(--line-soft)"
-        >
-          <div class="flex items-center gap-2">
-            <div
-              class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
-              style="background: var(--amber); color: var(--void)"
-            >
-              AR
-            </div>
-            <div>
-              <div style="color: var(--ink)">ayush_raj</div>
-              <div style="color: var(--ink-faint); font-size: 10.5px">
-                owner · you
-              </div>
-            </div>
-          </div>
-          <span
-            class="w-1.5 h-1.5 rounded-full"
-            style="background: var(--green)"
-          ></span>
-        </div>
-
-        <div class="flex gap-2">
-          <button
-            id="copy-invite-btn"
-            onclick="copyInviteLink()"
-            class="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-medium cursor-pointer transition-colors"
-            style="
-              background: var(--amber-glow);
-              color: var(--amber);
-              border: 1px solid var(--amber-dim);
-            "
-          >
-            <span id="copy-invite-text">copy invite link</span>
-          </button>
-          <button
-            onclick="testInTab()"
-            class="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-[12px] cursor-pointer transition-colors"
-            style="color: var(--ink-dim); border: 1px solid var(--line-soft)"
-          >
-            simulate reply
-          </button>
-        </div>
-
-        <div
-          class="mt-3 pt-3 flex items-center justify-between text-[10.5px]"
-          style="
-            border-top: 1px dashed var(--line-soft);
-            color: var(--ink-faint);
-          "
-        >
-          <span>memory-only · zero disk trace</span>
-          <span>AES-GCM-256</span>
-        </div>
+        <div id="dynamic-messages" class="space-y-4"></div>
       </div>
+    </main>
 
-      <!-- LOG BODY -->
-      <div
-        id="messages-container"
-        class="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-2 z-10 text-[13.5px] leading-relaxed"
-      >
-        <div style="color: var(--ink-faint)">[system] handshake complete</div>
-        <div style="color: var(--ink-faint)">
-          [system] key exchange verified —
-          <span style="color: var(--green)">AES-GCM-256</span>
-        </div>
-        <div class="mb-3" style="color: var(--ink-faint)">
-          [system] line secured. nothing persists after this window closes.
-        </div>
-
-        <div id="dynamic-messages" class="space-y-1.5"></div>
-      </div>
-
-      <!-- COMMAND INPUT -->
+    <!-- FLOATING INPUT -->
+    <footer
+      class="shrink-0 px-4 sm:px-6 pb-5 pt-1"
+      style="background: linear-gradient(to top, var(--bg) 60%, transparent)"
+    >
       <form
         id="message-form"
         onsubmit="sendMessage(event)"
-        class="shrink-0 px-4 sm:px-6 py-4 flex items-center gap-2 z-10"
-        style="background: var(--panel-alt); border-top: 1px solid var(--line)"
+        class="max-w-lg mx-auto flex items-center gap-1.5 p-1.5 rounded-full"
+        style="
+          background: var(--surface);
+          border: 1px solid var(--border);
+          box-shadow: 0 8px 24px -8px rgba(36, 27, 32, 0.12);
+        "
       >
-        <span class="text-[13.5px] shrink-0" style="color: var(--amber-dim)"
-          >plutus<span style="color: var(--ink-faint)">:~$</span></span
-        >
-        <div class="flex-1 relative">
-          <input
-            id="message-input"
-            type="text"
-            placeholder="type a message"
-            class="w-full bg-transparent outline-none text-[13.5px]"
-            style="color: var(--ink); caret-color: var(--amber)"
-            autocomplete="off"
-          />
-        </div>
         <button
           type="button"
           onclick="alert('Attachments stay in memory for this session only.')"
-          class="p-1.5 rounded-md cursor-pointer hover:bg-white/5 shrink-0"
+          class="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer shrink-0 transition-colors"
           style="color: var(--ink-faint)"
           title="Attach a file"
         >
           <svg
-            class="w-4 h-4"
+            class="w-4.5 h-4.5"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -458,20 +258,29 @@
             stroke-linecap="round"
             stroke-linejoin="round"
           >
-            <path
-              d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-            />
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
+
+        <input
+          id="message-input"
+          type="text"
+          placeholder="Message"
+          class="flex-1 bg-transparent outline-none text-[14px] min-w-0"
+          style="color: var(--ink)"
+          autocomplete="off"
+        />
+
         <button
           type="button"
           onclick="sendVoiceNote()"
-          class="hidden sm:block p-1.5 rounded-md cursor-pointer hover:bg-white/5 shrink-0"
+          class="hidden sm:flex w-9 h-9 rounded-full items-center justify-center cursor-pointer shrink-0 transition-colors"
           style="color: var(--ink-faint)"
           title="Send a voice note"
         >
           <svg
-            class="w-4 h-4"
+            class="w-4.5 h-4.5"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -485,30 +294,237 @@
             <line x1="8" y1="23" x2="16" y2="23" />
           </svg>
         </button>
+
         <button
           id="send-btn"
           type="submit"
-          class="shrink-0 px-3 h-8 rounded-md text-[12px] font-semibold cursor-pointer transition-colors"
-          style="background: var(--amber); color: var(--void)"
+          class="w-10 h-10 rounded-full flex items-center justify-center text-white cursor-pointer transition-all active:scale-90 shrink-0"
+          style="background: var(--plum)"
           title="Send"
         >
-          send ↵
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
         </button>
       </form>
+    </footer>
+
+    <!-- BOTTOM SHEET: SESSION DETAILS -->
+    <div
+      id="sheet-backdrop"
+      onclick="toggleSheet()"
+      class="hidden fixed inset-0 bg-black/35 z-40 fade-in"
+    ></div>
+    <div
+      id="sheet"
+      class="hidden sheet-up fixed left-0 right-0 bottom-0 z-50 rounded-t-3xl overflow-hidden"
+      style="background: var(--surface); max-height: 86vh"
+    >
+      <div class="flex justify-center pt-3 pb-1">
+        <div
+          class="w-9 h-1.5 rounded-full"
+          style="background: var(--border)"
+        ></div>
+      </div>
+
+      <div
+        class="px-5 pb-6 overflow-y-auto"
+        style="max-height: calc(86vh - 24px)"
+      >
+        <h3
+          class="font-display font-bold text-[16px] pt-2 pb-4"
+          style="color: var(--ink)"
+        >
+          Session details
+        </h3>
+
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="rounded-2xl p-3.5" style="background: var(--sunken)">
+            <div class="flex items-center justify-between mb-1">
+              <span
+                class="text-[11px] font-semibold"
+                style="color: var(--ink-soft)"
+                >Session ID</span
+              >
+              <button
+                onclick="copyText('3SDU4H')"
+                style="color: var(--ink-soft)"
+                class="cursor-pointer"
+                title="Copy"
+              >
+                <svg
+                  class="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path
+                    d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div
+              class="font-display font-bold text-[15px] tracking-wide"
+              style="color: var(--ink)"
+            >
+              3SDU4H
+            </div>
+          </div>
+          <div class="rounded-2xl p-3.5" style="background: var(--plum-tint)">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-[11px] font-semibold" style="color: var(--plum)"
+                >Passkey</span
+              >
+              <button
+                onclick="copyText('SOLAR-643')"
+                style="color: var(--plum)"
+                class="cursor-pointer"
+                title="Copy"
+              >
+                <svg
+                  class="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path
+                    d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div
+              class="font-display font-bold text-[15px] tracking-wide"
+              style="color: var(--ink)"
+            >
+              SOLAR-643
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="text-[12px] font-semibold mb-2 px-1"
+          style="color: var(--ink-soft)"
+        >
+          Participants
+        </div>
+        <div
+          class="flex items-center justify-between p-3 rounded-2xl mb-5"
+          style="background: var(--sunken)"
+        >
+          <div class="flex items-center gap-3">
+            <div
+              class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-[12px] text-white"
+              style="background: var(--plum)"
+            >
+              AR
+            </div>
+            <div>
+              <div
+                class="font-semibold text-[13.5px]"
+                style="color: var(--ink)"
+              >
+                Ayush Raj
+              </div>
+              <div class="text-[11.5px]" style="color: var(--ink-faint)">
+                Owner · You
+              </div>
+            </div>
+          </div>
+          <span
+            class="w-2 h-2 rounded-full"
+            style="background: var(--green)"
+          ></span>
+        </div>
+
+        <div class="space-y-2.5">
+          <button
+            id="copy-invite-btn"
+            onclick="copyInviteLink()"
+            class="w-full flex items-center justify-center gap-2 h-12 rounded-2xl text-white text-[14px] font-semibold cursor-pointer transition-colors active:scale-[0.98]"
+            style="background: var(--plum)"
+          >
+            <svg
+              class="w-4.5 h-4.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
+              />
+              <path
+                d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+              />
+            </svg>
+            <span id="copy-invite-text">Copy invite link</span>
+          </button>
+          <button
+            onclick="testInTab()"
+            class="w-full flex items-center justify-center gap-2 h-12 rounded-2xl text-[14px] font-semibold cursor-pointer transition-colors active:scale-[0.98]"
+            style="background: var(--sunken); color: var(--ink)"
+          >
+            Simulate a reply
+          </button>
+          <button
+            id="terminate-btn"
+            onclick="terminateSession()"
+            class="w-full flex items-center justify-center gap-2 h-12 rounded-2xl text-[14px] font-semibold cursor-pointer transition-colors active:scale-[0.98]"
+            style="
+              background: transparent;
+              color: var(--red);
+              border: 1px solid #f0d9d6;
+            "
+          >
+            End session
+          </button>
+        </div>
+
+        <p class="text-center text-[11px] mt-5" style="color: var(--ink-faint)">
+          Memory-only storage · AES-GCM-256
+        </p>
+      </div>
     </div>
 
     <!-- TOAST -->
     <div
       id="toast"
-      class="fixed bottom-6 left-1/2 -translate-x-1/2 text-[12.5px] px-4 py-2.5 rounded-lg opacity-0 pointer-events-none transition-opacity duration-300 z-50 flex items-center gap-2"
-      style="
-        background: var(--panel-alt);
-        color: var(--ink);
-        border: 1px solid var(--line);
-      "
+      class="fixed bottom-24 left-1/2 -translate-x-1/2 text-[13px] px-4 py-2.5 rounded-full opacity-0 pointer-events-none transition-opacity duration-300 z-[60] flex items-center gap-2 font-medium"
+      style="background: var(--ink); color: #fff"
     >
-      <span style="color: var(--green)">✓</span>
-      <span id="toast-text">copied</span>
+      <svg
+        class="w-4 h-4"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="var(--green)"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+      <span id="toast-text">Copied</span>
     </div>
 
     <script>
@@ -524,45 +540,43 @@
       function copyText(text) {
         navigator.clipboard
           .writeText(text)
-          .then(() => showToast("copied: " + text));
+          .then(() => showToast("Copied: " + text));
       }
 
       function copyInviteLink() {
         const link = window.location.origin + "?session=3SDU4H&key=SOLAR-643";
         navigator.clipboard.writeText(link).then(() => {
-          showToast("invite link copied");
+          showToast("Invite link copied");
           const btnText = document.getElementById("copy-invite-text");
-          btnText.innerText = "copied";
+          btnText.innerText = "Copied";
           setTimeout(() => {
-            btnText.innerText = "copy invite link";
+            btnText.innerText = "Copy invite link";
           }, 1800);
         });
       }
 
-      function toggleInfo() {
-        const panel = document.getElementById("info-panel");
-        const backdrop = document.getElementById("info-backdrop");
-        const isHidden = panel.classList.contains("hidden");
+      function toggleSheet() {
+        const sheet = document.getElementById("sheet");
+        const backdrop = document.getElementById("sheet-backdrop");
+        const isHidden = sheet.classList.contains("hidden");
         if (isHidden) {
-          panel.classList.remove("hidden");
+          sheet.classList.remove("hidden");
           backdrop.classList.remove("hidden");
         } else {
-          panel.classList.add("hidden");
+          sheet.classList.add("hidden");
           backdrop.classList.add("hidden");
         }
       }
 
       function testInTab() {
-        toggleInfo();
-        appendSystemLine("contacting peer...");
+        toggleSheet();
         setTimeout(() => {
-          appendLogLine(
-            "12:04",
+          appendMessage(
             "AR",
-            "ping confirmed on this line. ready when you are.",
+            "Ping confirmed on this line. Ready when you are.",
             "peer",
           );
-        }, 500);
+        }, 450);
       }
 
       function terminateSession() {
@@ -572,24 +586,14 @@
           )
         ) {
           document.getElementById("dynamic-messages").innerHTML = "";
-          showToast("session ended · cleared");
+          document.getElementById("empty-state").classList.remove("hidden");
+          toggleSheet();
+          showToast("Session ended and cleared");
         }
       }
 
-      let isMuted = false;
-      function toggleAudio() {
-        isMuted = !isMuted;
-        document.getElementById("mic-status-dot").style.background = isMuted
-          ? "var(--ink-faint)"
-          : "var(--green)";
-        document.getElementById("mic-status-text").innerText = isMuted
-          ? "muted"
-          : "live";
-        showToast(isMuted ? "notifications muted" : "notifications on");
-      }
-
       function sendVoiceNote() {
-        sendMessageCore("voice note · 0:05");
+        sendMessageCore("Voice note · 0:05");
       }
 
       function sendMessage(e) {
@@ -608,52 +612,51 @@
         });
       }
 
-      function appendSystemLine(text) {
+      function appendMessage(who, text, kind) {
+        document.getElementById("empty-state").classList.add("hidden");
         const container = document.getElementById("dynamic-messages");
         const row = document.createElement("div");
-        row.className = "row-in text-[12.5px]";
-        row.style.color = "var(--ink-faint)";
-        row.textContent = "[system] " + text;
-        container.appendChild(row);
-        row.scrollIntoView({ behavior: "smooth", block: "end" });
-      }
 
-      function appendLogLine(time, who, text, kind) {
-        const container = document.getElementById("dynamic-messages");
-        const row = document.createElement("div");
-        row.className = "row-in flex items-baseline gap-2";
-        const color = kind === "self" ? "var(--cyan)" : "var(--amber)";
-        row.innerHTML =
-          '<span class="shrink-0 text-[11px]" style="color: var(--ink-faint);">' +
-          time +
-          "</span>" +
-          '<span class="shrink-0 font-semibold text-[12.5px] w-9" style="color: ' +
-          color +
-          ';">' +
-          who +
-          "</span>" +
-          '<span class="text-[11px]" style="color: var(--ink-faint);">&rsaquo;</span>' +
-          '<span style="color: var(--ink);">' +
-          escapeHtml(text) +
-          "</span>";
+        if (kind === "self") {
+          row.className = "rise-in flex flex-col items-end gap-1";
+          row.innerHTML =
+            '<div class="max-w-[80%] px-4 py-2.5 rounded-[20px] text-[14px] leading-snug" style="background: var(--plum-tint); color: var(--ink);">' +
+            escapeHtml(text) +
+            "</div>" +
+            '<span class="text-[10.5px] pr-1" style="color: var(--ink-faint);">' +
+            nowStr() +
+            "</span>";
+        } else {
+          row.className = "rise-in flex flex-col items-start gap-1";
+          row.innerHTML =
+            '<div class="max-w-[80%] px-4 py-2.5 rounded-[20px] text-[14px] leading-snug" style="background: var(--surface); border: 1px solid var(--border); color: var(--ink);">' +
+            escapeHtml(text) +
+            "</div>" +
+            '<span class="text-[10.5px] pl-1" style="color: var(--ink-faint);">' +
+            who +
+            " · " +
+            nowStr() +
+            "</span>";
+        }
+
         container.appendChild(row);
         row.scrollIntoView({ behavior: "smooth", block: "end" });
       }
 
       function sendMessageCore(text) {
-        appendLogLine(nowStr(), "you", text, "self");
+        appendMessage("You", text, "self");
 
-        if (!text.includes("voice note")) {
+        if (!text.includes("Voice note")) {
           setTimeout(() => {
             const replies = [
-              "got it, reading now.",
-              "confirmed — nothing's written to disk.",
-              "looks good from this end.",
-              "encryption checks out on my side too.",
+              "Got it, reading now.",
+              "Confirmed — nothing's written to disk.",
+              "Looks good from this end.",
+              "Encryption checks out on my side too.",
             ];
             const randomReply =
               replies[Math.floor(Math.random() * replies.length)];
-            appendLogLine(nowStr(), "AR", randomReply, "peer");
+            appendMessage("AR", randomReply, "peer");
           }, 800);
         }
       }
@@ -670,8 +673,6 @@
           }[s];
         });
       }
-
-      document.getElementById("message-input").focus();
     </script>
   </body>
 </html>
