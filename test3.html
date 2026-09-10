@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>plutus://session</title>
+    <meta
+      name="description"
+      content="Plutus: an ephemeral, end-to-end encrypted terminal session."
+    />
+
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root {
+        --void: #0a0c11;
+        --panel: #10131a;
+        --panel-alt: #151922;
+        --line: #262b38;
+        --line-soft: #1c2029;
+        --ink: #dde1ea;
+        --ink-dim: #6b7385;
+        --ink-faint: #454c5e;
+        --amber: #e3a13e;
+        --amber-dim: #a9782f;
+        --amber-glow: rgba(227, 161, 62, 0.18);
+        --cyan: #4fb3bf;
+        --red: #d9564d;
+        --green: #4caf7d;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--void);
+        color: var(--ink);
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden;
+      }
+      body {
+        background-image:
+          radial-gradient(
+            ellipse at 50% -10%,
+            rgba(227, 161, 62, 0.06),
+            transparent 55%
+          ),
+          radial-gradient(
+            ellipse at 50% 110%,
+            rgba(79, 179, 191, 0.04),
+            transparent 55%
+          );
+      }
+      .scanlines {
+        background-image: repeating-linear-gradient(
+          to bottom,
+          rgba(255, 255, 255, 0.014) 0px,
+          rgba(255, 255, 255, 0.014) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+      }
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--line);
+        border-radius: 9999px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--ink-faint);
+      }
+
+      @keyframes boot-in {
+        0% {
+          opacity: 0;
+        }
+        8% {
+          opacity: 1;
+        }
+        11% {
+          opacity: 0.3;
+        }
+        16% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+      .boot {
+        animation: boot-in 0.7s steps(1) both;
+      }
+
+      @keyframes blink {
+        0%,
+        45% {
+          opacity: 1;
+        }
+        50%,
+        95% {
+          opacity: 0;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+      .caret {
+        animation: blink 1.05s step-end infinite;
+      }
+
+      @keyframes row-in {
+        from {
+          opacity: 0;
+          transform: translateY(4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .row-in {
+        animation: row-in 0.18s ease-out both;
+      }
+
+      @keyframes drop-in {
+        from {
+          opacity: 0;
+          transform: translateY(-6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .drop-in {
+        animation: drop-in 0.16s ease-out both;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot,
+        .caret,
+        .row-in,
+        .drop-in {
+          animation: none !important;
+        }
+      }
+
+      button:focus-visible,
+      input:focus-visible {
+        outline: 1.5px solid var(--amber);
+        outline-offset: 2px;
+      }
+
+      .dot-btn {
+        transition:
+          filter 0.15s ease,
+          transform 0.1s ease;
+      }
+      .dot-btn:hover {
+        filter: brightness(1.3);
+      }
+      .dot-btn:active {
+        transform: scale(0.9);
+      }
+    </style>
+  </head>
+  <body class="h-full flex items-center justify-center p-0 sm:p-6 select-none">
+    <div class="scanlines fixed inset-0 pointer-events-none"></div>
+
+    <!-- TERMINAL WINDOW -->
+    <div
+      id="terminal"
+      class="boot w-full sm:max-w-2xl h-full sm:h-[88vh] flex flex-col rounded-none sm:rounded-2xl overflow-hidden relative"
+      style="
+        background: var(--panel);
+        border: 1px solid var(--line);
+        box-shadow:
+          0 0 0 1px rgba(0, 0, 0, 0.4),
+          0 30px 80px -20px rgba(227, 161, 62, 0.08);
+      "
+    >
+      <!-- CHROME BAR -->
+      <div
+        class="h-12 px-4 flex items-center justify-between shrink-0 relative z-30"
+        style="
+          background: var(--panel-alt);
+          border-bottom: 1px solid var(--line);
+        "
+      >
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2">
+            <button
+              onclick="terminateSession()"
+              title="End session"
+              class="dot-btn w-3 h-3 rounded-full cursor-pointer"
+              style="background: var(--red)"
+            ></button>
+            <button
+              onclick="toggleAudio()"
+              title="Mute notifications"
+              class="dot-btn w-3 h-3 rounded-full cursor-pointer"
+              style="background: var(--amber)"
+            ></button>
+            <button
+              onclick="toggleInfo()"
+              title="Session info"
+              class="dot-btn w-3 h-3 rounded-full cursor-pointer"
+              style="background: var(--green)"
+            ></button>
+          </div>
+          <div
+            class="hidden xs:block text-[12px]"
+            style="color: var(--ink-dim)"
+          >
+            plutus<span style="color: var(--ink-faint)">://</span>session<span
+              style="color: var(--ink-faint)"
+              >/</span
+            ><span style="color: var(--amber)">3sdu4h</span>
+          </div>
+        </div>
+
+        <div
+          class="flex items-center gap-3 text-[11px]"
+          style="color: var(--ink-faint)"
+        >
+          <span class="hidden sm:flex items-center gap-1.5">
+            <span
+              id="mic-status-dot"
+              class="w-1.5 h-1.5 rounded-full"
+              style="background: var(--green)"
+            ></span>
+            <span id="mic-status-text">live</span>
+          </span>
+          <button
+            onclick="toggleInfo()"
+            class="p-1.5 rounded-md hover:bg-white/5 cursor-pointer"
+            title="Session info"
+          >
+            <svg
+              class="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- SESSION INFO DROPDOWN -->
+      <div
+        id="info-backdrop"
+        onclick="toggleInfo()"
+        class="hidden fixed inset-0 z-20"
+      ></div>
+      <div
+        id="info-panel"
+        class="hidden drop-in absolute left-0 right-0 top-12 z-30 mx-3 mt-2 rounded-xl p-4 text-[12.5px]"
+        style="
+          background: var(--panel-alt);
+          border: 1px solid var(--line);
+          box-shadow: 0 20px 50px -15px rgba(0, 0, 0, 0.6);
+        "
+      >
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div
+            class="rounded-lg p-3"
+            style="background: var(--panel); border: 1px solid var(--line-soft)"
+          >
+            <div class="flex items-center justify-between mb-1.5">
+              <span style="color: var(--ink-faint)">session_id</span>
+              <button
+                onclick="copyText('3SDU4H')"
+                style="color: var(--ink-dim)"
+                class="hover:text-white cursor-pointer"
+                title="Copy"
+              >
+                <svg
+                  class="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path
+                    d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div class="font-semibold" style="color: var(--amber)">3SDU4H</div>
+          </div>
+          <div
+            class="rounded-lg p-3"
+            style="background: var(--panel); border: 1px solid var(--line-soft)"
+          >
+            <div class="flex items-center justify-between mb-1.5">
+              <span style="color: var(--ink-faint)">passkey</span>
+              <button
+                onclick="copyText('SOLAR-643')"
+                style="color: var(--ink-dim)"
+                class="hover:text-white cursor-pointer"
+                title="Copy"
+              >
+                <svg
+                  class="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path
+                    d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div class="font-semibold" style="color: var(--cyan)">
+              SOLAR-643
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="rounded-lg p-3 mb-3 flex items-center justify-between"
+          style="background: var(--panel); border: 1px solid var(--line-soft)"
+        >
+          <div class="flex items-center gap-2">
+            <div
+              class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
+              style="background: var(--amber); color: var(--void)"
+            >
+              AR
+            </div>
+            <div>
+              <div style="color: var(--ink)">ayush_raj</div>
+              <div style="color: var(--ink-faint); font-size: 10.5px">
+                owner · you
+              </div>
+            </div>
+          </div>
+          <span
+            class="w-1.5 h-1.5 rounded-full"
+            style="background: var(--green)"
+          ></span>
+        </div>
+
+        <div class="flex gap-2">
+          <button
+            id="copy-invite-btn"
+            onclick="copyInviteLink()"
+            class="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-medium cursor-pointer transition-colors"
+            style="
+              background: var(--amber-glow);
+              color: var(--amber);
+              border: 1px solid var(--amber-dim);
+            "
+          >
+            <span id="copy-invite-text">copy invite link</span>
+          </button>
+          <button
+            onclick="testInTab()"
+            class="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-[12px] cursor-pointer transition-colors"
+            style="color: var(--ink-dim); border: 1px solid var(--line-soft)"
+          >
+            simulate reply
+          </button>
+        </div>
+
+        <div
+          class="mt-3 pt-3 flex items-center justify-between text-[10.5px]"
+          style="
+            border-top: 1px dashed var(--line-soft);
+            color: var(--ink-faint);
+          "
+        >
+          <span>memory-only · zero disk trace</span>
+          <span>AES-GCM-256</span>
+        </div>
+      </div>
+
+      <!-- LOG BODY -->
+      <div
+        id="messages-container"
+        class="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-2 z-10 text-[13.5px] leading-relaxed"
+      >
+        <div style="color: var(--ink-faint)">[system] handshake complete</div>
+        <div style="color: var(--ink-faint)">
+          [system] key exchange verified —
+          <span style="color: var(--green)">AES-GCM-256</span>
+        </div>
+        <div class="mb-3" style="color: var(--ink-faint)">
+          [system] line secured. nothing persists after this window closes.
+        </div>
+
+        <div id="dynamic-messages" class="space-y-1.5"></div>
+      </div>
+
+      <!-- COMMAND INPUT -->
+      <form
+        id="message-form"
+        onsubmit="sendMessage(event)"
+        class="shrink-0 px-4 sm:px-6 py-4 flex items-center gap-2 z-10"
+        style="background: var(--panel-alt); border-top: 1px solid var(--line)"
+      >
+        <span class="text-[13.5px] shrink-0" style="color: var(--amber-dim)"
+          >plutus<span style="color: var(--ink-faint)">:~$</span></span
+        >
+        <div class="flex-1 relative">
+          <input
+            id="message-input"
+            type="text"
+            placeholder="type a message"
+            class="w-full bg-transparent outline-none text-[13.5px]"
+            style="color: var(--ink); caret-color: var(--amber)"
+            autocomplete="off"
+          />
+        </div>
+        <button
+          type="button"
+          onclick="alert('Attachments stay in memory for this session only.')"
+          class="p-1.5 rounded-md cursor-pointer hover:bg-white/5 shrink-0"
+          style="color: var(--ink-faint)"
+          title="Attach a file"
+        >
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onclick="sendVoiceNote()"
+          class="hidden sm:block p-1.5 rounded-md cursor-pointer hover:bg-white/5 shrink-0"
+          style="color: var(--ink-faint)"
+          title="Send a voice note"
+        >
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+        </button>
+        <button
+          id="send-btn"
+          type="submit"
+          class="shrink-0 px-3 h-8 rounded-md text-[12px] font-semibold cursor-pointer transition-colors"
+          style="background: var(--amber); color: var(--void)"
+          title="Send"
+        >
+          send ↵
+        </button>
+      </form>
+    </div>
+
+    <!-- TOAST -->
+    <div
+      id="toast"
+      class="fixed bottom-6 left-1/2 -translate-x-1/2 text-[12.5px] px-4 py-2.5 rounded-lg opacity-0 pointer-events-none transition-opacity duration-300 z-50 flex items-center gap-2"
+      style="
+        background: var(--panel-alt);
+        color: var(--ink);
+        border: 1px solid var(--line);
+      "
+    >
+      <span style="color: var(--green)">✓</span>
+      <span id="toast-text">copied</span>
+    </div>
+
+    <script>
+      function showToast(text) {
+        const toast = document.getElementById("toast");
+        document.getElementById("toast-text").innerText = text;
+        toast.style.opacity = "1";
+        setTimeout(() => {
+          toast.style.opacity = "0";
+        }, 2000);
+      }
+
+      function copyText(text) {
+        navigator.clipboard
+          .writeText(text)
+          .then(() => showToast("copied: " + text));
+      }
+
+      function copyInviteLink() {
+        const link = window.location.origin + "?session=3SDU4H&key=SOLAR-643";
+        navigator.clipboard.writeText(link).then(() => {
+          showToast("invite link copied");
+          const btnText = document.getElementById("copy-invite-text");
+          btnText.innerText = "copied";
+          setTimeout(() => {
+            btnText.innerText = "copy invite link";
+          }, 1800);
+        });
+      }
+
+      function toggleInfo() {
+        const panel = document.getElementById("info-panel");
+        const backdrop = document.getElementById("info-backdrop");
+        const isHidden = panel.classList.contains("hidden");
+        if (isHidden) {
+          panel.classList.remove("hidden");
+          backdrop.classList.remove("hidden");
+        } else {
+          panel.classList.add("hidden");
+          backdrop.classList.add("hidden");
+        }
+      }
+
+      function testInTab() {
+        toggleInfo();
+        appendSystemLine("contacting peer...");
+        setTimeout(() => {
+          appendLogLine(
+            "12:04",
+            "AR",
+            "ping confirmed on this line. ready when you are.",
+            "peer",
+          );
+        }, 500);
+      }
+
+      function terminateSession() {
+        if (
+          confirm(
+            "End this session? Every message in this window will be cleared immediately.",
+          )
+        ) {
+          document.getElementById("dynamic-messages").innerHTML = "";
+          showToast("session ended · cleared");
+        }
+      }
+
+      let isMuted = false;
+      function toggleAudio() {
+        isMuted = !isMuted;
+        document.getElementById("mic-status-dot").style.background = isMuted
+          ? "var(--ink-faint)"
+          : "var(--green)";
+        document.getElementById("mic-status-text").innerText = isMuted
+          ? "muted"
+          : "live";
+        showToast(isMuted ? "notifications muted" : "notifications on");
+      }
+
+      function sendVoiceNote() {
+        sendMessageCore("voice note · 0:05");
+      }
+
+      function sendMessage(e) {
+        e.preventDefault();
+        const input = document.getElementById("message-input");
+        const text = input.value.trim();
+        if (!text) return;
+        sendMessageCore(text);
+        input.value = "";
+      }
+
+      function nowStr() {
+        return new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
+      function appendSystemLine(text) {
+        const container = document.getElementById("dynamic-messages");
+        const row = document.createElement("div");
+        row.className = "row-in text-[12.5px]";
+        row.style.color = "var(--ink-faint)";
+        row.textContent = "[system] " + text;
+        container.appendChild(row);
+        row.scrollIntoView({ behavior: "smooth", block: "end" });
+      }
+
+      function appendLogLine(time, who, text, kind) {
+        const container = document.getElementById("dynamic-messages");
+        const row = document.createElement("div");
+        row.className = "row-in flex items-baseline gap-2";
+        const color = kind === "self" ? "var(--cyan)" : "var(--amber)";
+        row.innerHTML =
+          '<span class="shrink-0 text-[11px]" style="color: var(--ink-faint);">' +
+          time +
+          "</span>" +
+          '<span class="shrink-0 font-semibold text-[12.5px] w-9" style="color: ' +
+          color +
+          ';">' +
+          who +
+          "</span>" +
+          '<span class="text-[11px]" style="color: var(--ink-faint);">&rsaquo;</span>' +
+          '<span style="color: var(--ink);">' +
+          escapeHtml(text) +
+          "</span>";
+        container.appendChild(row);
+        row.scrollIntoView({ behavior: "smooth", block: "end" });
+      }
+
+      function sendMessageCore(text) {
+        appendLogLine(nowStr(), "you", text, "self");
+
+        if (!text.includes("voice note")) {
+          setTimeout(() => {
+            const replies = [
+              "got it, reading now.",
+              "confirmed — nothing's written to disk.",
+              "looks good from this end.",
+              "encryption checks out on my side too.",
+            ];
+            const randomReply =
+              replies[Math.floor(Math.random() * replies.length)];
+            appendLogLine(nowStr(), "AR", randomReply, "peer");
+          }, 800);
+        }
+      }
+
+      function escapeHtml(string) {
+        return String(string).replace(/[&<>"'`=\/]/g, function (s) {
+          return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+            "/": "&#x2F;",
+          }[s];
+        });
+      }
+
+      document.getElementById("message-input").focus();
+    </script>
+  </body>
+</html>
