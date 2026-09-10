@@ -270,6 +270,35 @@ export const ActiveSessionView = ({
 
   const isOwner = sessionData.isOwner;
 
+  // Derive session creator (owner) and joiners
+  const creatorParticipant = sessionData.participants.find((p) => p.isOwner);
+  const creatorName = creatorParticipant
+    ? creatorParticipant.username
+    : sessionData.isOwner
+    ? sessionData.username
+    : "Host";
+
+const getMeetName = (name) => {
+  if (!name) return "Secure Meet";
+
+  const firstName = name.trim().split(" ")[0] || name.trim();
+
+  return firstName.toLowerCase().endsWith("s")
+    ? `${firstName}' meet`
+    : `${firstName}'s meet`;
+};
+
+const creatorMeetTitle = isOwner
+  ? "Your meet"
+  : getMeetName(creatorName);
+
+  // All joiners (participants who are not the session creator/owner)
+  const joinerParticipants = sessionData.participants.filter((p) => !p.isOwner);
+  const joinerDisplayNames =
+    joinerParticipants.length > 0
+      ? joinerParticipants.map((p) => p.username).join(", ")
+      : "Waiting for joiners...";
+
   // Derive peer display name
   const otherParticipants = sessionData.participants.filter(
     (p) => p.participantId !== sessionData.participantId
@@ -737,46 +766,85 @@ export const ActiveSessionView = ({
             </button>
           </div>
 
-          {/* Participants List from Original UI */}
-          <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-2">
+          {/* Participants List - Differentiated UI for Current User vs Other Participants */}
+          <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-2.5">
             {sessionData.participants.map((p) => {
               const isCurrentUser =
                 p.participantId === sessionData.participantId;
               const initials = getInitials(p.username);
 
-              return (
-                <div
-                  key={p.participantId}
-                  id={`participant-${p.participantId}`}
-                  className="flex items-center justify-between p-3 rounded-xl bg-[#f0f2f5] border border-[#e9edef] hover:bg-[#e9edef] transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    {/* Avatar with online status dot */}
-                    <div className="relative shrink-0">
-                      <div className="w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center font-bold text-sm text-white shadow-2xs">
-                        {initials}
-                      </div>
-                      <span
-                        className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
-                          p.isOwner ? "bg-[#eab308]" : "bg-[#00a884]"
-                        }`}
-                      />
+              if (isCurrentUser) {
+                // CURRENT USER CARD: Distinct emerald highlight, prominent YOU tag, glowing avatar ring
+                return (
+                  <div
+                    key={p.participantId}
+                    id={`participant-me-${p.participantId}`}
+                    className="p-3 rounded-xl bg-gradient-to-r from-[#e7f7f3] via-[#ecfbf7] to-[#f0fdf9] border-2 border-[#00a884]/70 shadow-xs transition-all relative overflow-hidden ring-1 ring-[#00a884]/20"
+                  >
+                    {/* Top small header tag for self */}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-[#00a884] text-white shadow-2xs">
+                        YOUR ACCOUNT
+                      </span>
+                      {p.isOwner && (
+                        <span
+                          id="badge-owner-me"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#fef08a] text-[#854d0e] border border-[#facc15]"
+                        >
+                          <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
+                            <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5m14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z" />
+                          </svg>
+                          HOST / OWNER
+                        </span>
+                      )}
                     </div>
-                    <div className="truncate">
-                      <div className="font-semibold text-sm text-[#111b21] truncate">
-                        {p.username}
-                      </div>
-                      <div className="text-[11px] text-[#667781]">
-                        Active now
+
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Prominent Avatar for Current User with double ring */}
+                        <div className="relative shrink-0">
+                          <div className="w-11 h-11 rounded-full bg-[#008069] text-white flex items-center justify-center font-extrabold text-sm shadow-xs ring-2 ring-[#00a884] ring-offset-2 ring-offset-white">
+                            {initials}
+                          </div>
+                          <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white bg-[#00a884] flex items-center justify-center">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                          </span>
+                        </div>
+
+                        <div className="min-w-0 truncate">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-extrabold text-sm sm:text-base text-[#0f5132] truncate">
+                              {p.username}
+                            </span>
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-[#00a884]/15 text-[#006e56] border border-[#00a884]/30">
+                              You
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-medium text-[#008069] flex items-center gap-1 mt-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#00a884]" />
+                            <span>Active now • This Device</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
+                );
+              }
 
-                  {/* Badges: OWNER (crown) & YOU + Kick button */}
-                  <div className="flex items-center gap-1.5 shrink-0">
+              // OTHER JOINER / PARTICIPANT CARD: Clean neutral slate theme, distinct avatar & JOINER tag
+              return (
+                <div
+                  key={p.participantId}
+                  id={`participant-peer-${p.participantId}`}
+                  className="p-3 rounded-xl bg-white border border-[#cbd5e1] hover:border-[#94a3b8] hover:bg-[#f8fafc] shadow-2xs transition-all"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                      {p.isOwner ? "SESSION HOST" : "GUEST / JOINER"}
+                    </span>
                     {p.isOwner && (
                       <span
-                        id="badge-owner"
+                        id="badge-owner-peer"
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#fef08a] text-[#854d0e] border border-[#facc15]"
                       >
                         <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
@@ -785,23 +853,43 @@ export const ActiveSessionView = ({
                         OWNER
                       </span>
                     )}
+                  </div>
 
-                    {isCurrentUser && (
-                      <span
-                        id="badge-you"
-                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#d1fae5] text-[#065f46] border border-[#a7f3d0]"
-                      >
-                        YOU
-                      </span>
-                    )}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Avatar for Other Joiner: Distinct Slate/Charcoal Avatar */}
+                      <div className="relative shrink-0">
+                        <div className="w-10 h-10 rounded-full bg-[#334155] text-white flex items-center justify-center font-bold text-sm shadow-2xs border border-slate-300">
+                          {initials}
+                        </div>
+                        <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white bg-emerald-500" />
+                      </div>
 
-                    {/* Owner controls: Make Owner & Kick participant */}
+                      <div className="min-w-0 truncate">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="font-semibold text-sm text-[#1e293b] truncate">
+                            {p.username}
+                          </span>
+                          {!p.isOwner && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                              Joiner
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-[#64748b] flex items-center gap-1 mt-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span>Connected peer</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Owner controls for other joiners */}
                     {isOwner && !p.isOwner && (
-                      <div className="flex items-center gap-1 ml-1">
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           onClick={() => setTransferTarget(p)}
                           title={`Transfer session ownership to ${p.username}`}
-                          className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer"
+                          className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer"
                         >
                           <Crown className="w-3 h-3 text-amber-600" />
                           <span className="hidden sm:inline">MAKE OWNER</span>
@@ -810,7 +898,7 @@ export const ActiveSessionView = ({
                         <button
                           onClick={() => setKickTarget(p)}
                           title={`Kick and permanently ban ${p.username}`}
-                          className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer"
+                          className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-700 text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer"
                         >
                           <UserX className="w-3 h-3" />
                           <span>KICK</span>
@@ -868,19 +956,43 @@ export const ActiveSessionView = ({
             />
           )}
 
-          {/* Chat Area Subheader */}
+          {/* Chat Area Subheader: Session Creator's Meet Name & Joiner Name */}
           <div className="h-[60px] px-4 bg-[#f0f2f5] border-b border-[#e9edef] flex items-center justify-between z-10 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#00a884] text-white flex items-center justify-center font-bold text-xs shadow-2xs">
-                {getInitials(peerDisplayName)}
-              </div>
-              <div>
-                <div className="font-semibold text-sm text-[#111b21]">
-                  {peerDisplayName}
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="relative shrink-0">
+                <div className="w-10 h-10 rounded-full bg-[#00a884] text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+                  {joinerParticipants.length > 0
+                    ? getInitials(joinerParticipants[0].username)
+                    : getInitials(creatorName)}
                 </div>
-                <div className="text-xs text-[#00a884] font-medium flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#00a884]"></span>
-                  <span>online • E2EE Mesh</span>
+                <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#f0f2f5] bg-[#00a884]" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-sm sm:text-base text-[#111b21] tracking-tight truncate">
+                    {creatorMeetTitle}
+                  </span>
+                  <span className="text-[#8696a0] font-normal text-xs">•</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-[#e7f7f3] text-[#008069] border border-[#00a884]/30 shrink-0">
+                    <span className="text-[10px] uppercase font-bold text-[#54656f]">
+                      Joiner:
+                    </span>
+                    <span className="font-bold text-[#008069]">
+                      {joinerDisplayNames}
+                    </span>
+                  </span>
+                </div>
+                <div className="text-xs text-[#54656f] font-medium flex items-center flex-wrap gap-1.5 mt-0.5">
+                  <span className="inline-flex items-center gap-1 text-[#00a884] font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-pulse"></span>
+                    <span>online</span>
+                  </span>
+                  <span className="text-[#8696a0]">•</span>
+                  <span>
+                    Host: <strong className="text-[#111b21] font-semibold">{creatorName}</strong>
+                  </span>
+                  <span className="text-[#8696a0]">•</span>
+                  <span>E2EE Mesh</span>
                 </div>
               </div>
             </div>
@@ -1132,9 +1244,13 @@ export const ActiveSessionView = ({
                       >
                         <div className="text-[11px] font-bold text-[#00a884] mb-0.5 flex items-center gap-1.5">
                           <span>{m.senderName}</span>
-                          {m.isOwner && (
+                          {m.isOwner ? (
                             <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#fef08a] text-[#854d0e] border border-[#facc15]">
                               OWNER
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                              JOINER
                             </span>
                           )}
                         </div>
