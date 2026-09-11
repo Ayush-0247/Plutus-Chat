@@ -23,7 +23,6 @@ import {
   Smartphone,
   X,
   Wifi,
-  Lock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -141,7 +140,7 @@ export const ActiveSessionView = ({
   const handleToggleAudio = () => {
     const updated = toggleSound();
     setAudioEnabled(updated);
-    triggerToast(updated ? "Notifications on" : "Notifications muted");
+    triggerToast(updated ? "Audio notifications enabled" : "Audio muted");
   };
 
   // Copy handlers
@@ -164,14 +163,14 @@ export const ActiveSessionView = ({
     const inviteUrl = `${origin}?join=${sessionData.sessionId}&key=${sessionData.passkey}`;
     navigator.clipboard.writeText(inviteUrl);
     setCopiedLink(true);
-    triggerToast("Invite link copied to clipboard");
+    triggerToast("Invite link copied to clipboard!");
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
   const handleOpenTestTab = () => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const inviteUrl = `${origin}?join=${sessionData.sessionId}&key=${sessionData.passkey}`;
-    triggerToast("Contacting peer...");
+    triggerToast("Opening session peer in active window...");
     if (typeof window !== "undefined") {
       window.open(inviteUrl, "_blank");
     }
@@ -203,9 +202,9 @@ export const ActiveSessionView = ({
   };
 
   const handleSendVoiceNote = () => {
-    onSendMessage("Voice note · 0:05");
+    onSendMessage("🎤 [Voice Note • 0:05] Ephemeral encrypted audio memo");
     playMessageSentSound();
-    triggerToast("Voice note sent");
+    triggerToast("Sent ephemeral voice memo");
   };
 
   // File attach trigger
@@ -256,11 +255,14 @@ export const ActiveSessionView = ({
     }
 
     if (sentByMe) {
+      // User sent message: always scroll to bottom
       scrollToBottom("smooth");
     } else {
+      // Another user or system sent message: check if user is near bottom
       if (isNearBottomRef.current) {
         scrollToBottom("smooth");
       } else {
+        // Scrolled up: do not yank viewport, show 'New messages' indicator
         setShowNewMessagesBtn(true);
       }
     }
@@ -276,24 +278,28 @@ export const ActiveSessionView = ({
     ? sessionData.username
     : "Host";
 
-  const getMeetName = (name) => {
-    if (!name) return "Secure Meet";
-    const firstName = name.trim().split(" ")[0] || name.trim();
-    return firstName.toLowerCase().endsWith("s")
-      ? `${firstName}' meet`
-      : `${firstName}'s meet`;
-  };
+const getMeetName = (name) => {
+  if (!name) return "Secure Meet";
 
-  const creatorMeetTitle = isOwner
-    ? "Your meet"
-    : getMeetName(creatorName);
+  const firstName = name.trim().split(" ")[0] || name.trim();
 
+  return firstName.toLowerCase().endsWith("s")
+    ? `${firstName}' meet`
+    : `${firstName}'s meet`;
+};
+
+const creatorMeetTitle = isOwner
+  ? "Your meet"
+  : getMeetName(creatorName);
+
+  // All joiners (participants who are not the session creator/owner)
   const joinerParticipants = sessionData.participants.filter((p) => !p.isOwner);
   const joinerDisplayNames =
     joinerParticipants.length > 0
       ? joinerParticipants.map((p) => p.username).join(", ")
       : "Waiting for joiners...";
 
+  // Derive peer display name
   const otherParticipants = sessionData.participants.filter(
     (p) => p.participantId !== sessionData.participantId
   );
@@ -302,8 +308,9 @@ export const ActiveSessionView = ({
       ? otherParticipants[0].username
       : otherParticipants.length > 1
       ? `${otherParticipants[0].username} +${otherParticipants.length - 1}`
-      : sessionData.username;
+      : `${sessionData.username} (Secure Mesh)`;
 
+  // Current user initials
   const getInitials = (name) => {
     if (!name) return "P";
     const parts = name.trim().split(" ");
@@ -314,22 +321,21 @@ export const ActiveSessionView = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f4f5f9] text-[#171a25] antialiased select-none font-sans overflow-hidden relative">
-      {/* 1. TOP HEADER (Inspired by test2.html) */}
+    <div className="flex-1 flex flex-col h-full bg-[#f0f2f5] text-[#111b21] antialiased select-none font-sans overflow-hidden relative">
+      {/* 1. TOP APP HEADER (From test.html) */}
       <header
         id="top-header"
-        className="h-16 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30 border-b bg-white"
-        style={{ borderColor: "var(--border)" }}
+        className="h-14 px-3 sm:px-6 bg-[#f0f2f5] border-b border-[#e9edef] flex items-center justify-between shrink-0 z-30 shadow-2xs"
       >
-        {/* Left: Brand Icon & Title with pulsing connection dot */}
-        <div className="flex items-center gap-3">
+        {/* Brand & Shield Logo from Original UI */}
+        <div className="flex items-center gap-2.5">
           <div
             id="brand-logo"
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-xs"
-            style={{ background: "var(--brand)" }}
+            className="w-9 h-9 rounded-xl bg-[#00a884] flex items-center justify-center text-white shadow-2xs shrink-0"
           >
+            {/* Shield Icon */}
             <svg
-              className="w-4.5 h-4.5"
+              className="w-5 h-5"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -340,50 +346,28 @@ export const ActiveSessionView = ({
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
           </div>
-          <div className="leading-tight">
-            <div className="flex items-baseline gap-1">
-              <span
-                className="text-[15px] font-extrabold tracking-tight"
-                style={{ color: "var(--ink)" }}
-              >
-                Plutus
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1">
+              <span className="text-base sm:text-lg font-bold tracking-tight text-[#111b21]">
+                PLUTUS
               </span>
-              <span
-                className="text-[15px] font-medium"
-                style={{ color: "var(--ink-faint)" }}
-              >
-                Session
+              <span className="text-base sm:text-lg font-bold tracking-tight text-[#00a884]">
+                .CHAT
               </span>
-            </div>
-            <div
-              className="hidden sm:flex items-center gap-1.5 text-[11px]"
-              style={{ color: "var(--ink-faint)" }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full pulse-dot"
-                style={{ background: "var(--success)" }}
-              />
-              Connected · nothing is saved to disk
             </div>
           </div>
         </div>
 
-        {/* Right Controls: Arch, Line status, Signal, Sound, Calls, Terminate/Leave, Mobile toggle */}
+        {/* Right Controls: LINE status, signal indicator, audio speaker, mobile toggle */}
         <div className="flex items-center gap-2">
           {/* Architecture info button (if available) */}
           {onOpenArchitecture && (
             <button
               onClick={onOpenArchitecture}
               title="View Architecture"
-              className="hidden sm:flex items-center gap-1.5 px-2.5 h-9 rounded-lg border text-xs transition-colors cursor-pointer"
-              style={{
-                color: "var(--ink-soft)",
-                borderColor: "var(--border)",
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-              onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+              className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white border border-[#e9edef] text-xs text-[#54656f] hover:text-[#111b21] transition-colors cursor-pointer"
             >
-              <Info className="w-3.5 h-3.5" style={{ color: "var(--brand)" }} />
+              <Info className="w-3.5 h-3.5 text-[#00a884]" />
               <span className="text-[11px] font-semibold">ARCH</span>
             </button>
           )}
@@ -391,39 +375,40 @@ export const ActiveSessionView = ({
           {/* LINE Indicator Badge */}
           <div
             id="line-indicator-badge"
-            className="hidden md:flex items-center gap-1.5 px-2.5 h-9 rounded-lg border text-xs font-mono"
-            style={{
-              background: "var(--surface-alt)",
-              borderColor: "var(--border)",
-              color: "var(--ink)",
-            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white border border-[#e9edef] text-xs font-mono text-[#111b21] shadow-2xs"
           >
-            <span
-              className="w-1.5 h-1.5 rounded-full pulse-dot"
-              style={{ background: "var(--brand)" }}
-            />
-            <span style={{ color: "var(--ink-faint)" }} className="font-semibold">
+            {/* Broadcast wave icon */}
+            <svg
+              className="w-3.5 h-3.5 text-[#00a884] pulse-indicator shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" />
+              <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" />
+              <circle cx="12" cy="12" r="2" />
+              <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" />
+              <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" />
+            </svg>
+            <span className="hidden xs:inline text-[#54656f] font-semibold">
               LINE:
             </span>
-            <span className="font-bold" style={{ color: "var(--brand)" }}>
+            <span className="font-bold text-[#00a884]">
               {sessionData.sessionId}
             </span>
           </div>
 
-          {/* Signal Indicator Button */}
+          {/* Signal Indicator Button from Original UI */}
           <button
             id="signal-indicator-btn"
             onClick={() =>
               triggerToast("Encrypted Peer Link: 100% Signal • RAM Buffer Active")
             }
             title="Encrypted Peer Link: 100% Signal"
-            className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors cursor-pointer border"
-            style={{
-              color: "var(--success)",
-              borderColor: "var(--border)",
-            }}
-            onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-            onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+            className="w-8 h-8 rounded-lg bg-[#e7f7f3] border border-[#00a884]/30 flex items-center justify-center text-[#008069] hover:bg-[#d1f2eb] transition-colors cursor-pointer"
           >
             <svg
               className="w-4 h-4"
@@ -441,23 +426,21 @@ export const ActiveSessionView = ({
             </svg>
           </button>
 
-          {/* Audio Speaker Toggle Button (Exact from test2.html) */}
+          {/* Audio Speaker Button from Original UI */}
           <button
             id="audio-toggle-btn"
             onClick={handleToggleAudio}
-            title={audioEnabled ? "Toggle notification sound" : "Sound Muted"}
-            className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors cursor-pointer border"
-            style={{
-              color: audioEnabled ? "var(--ink-soft)" : "var(--danger)",
-              borderColor: "var(--border)",
-            }}
-            onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-            onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+            title={audioEnabled ? "Sound Notifications Enabled" : "Sound Muted"}
+            className={`w-8 h-8 rounded-lg bg-white border border-[#e9edef] flex items-center justify-center transition-colors cursor-pointer ${
+              audioEnabled
+                ? "text-[#54656f] hover:text-[#111b21] hover:bg-[#e9edef]"
+                : "text-rose-500 hover:bg-rose-50"
+            }`}
           >
             {audioEnabled ? (
               <svg
                 id="speaker-icon"
-                className="w-4.5 h-4.5"
+                className="w-4 h-4"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -471,7 +454,7 @@ export const ActiveSessionView = ({
             ) : (
               <svg
                 id="speaker-icon"
-                className="w-4.5 h-4.5"
+                className="w-4 h-4"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -486,137 +469,15 @@ export const ActiveSessionView = ({
             )}
           </button>
 
-          {/* Owner WebRTC Calling Controls */}
-          {isOwner && callState === "IDLE" && (
-            <div className="hidden sm:flex items-center gap-1.5">
-              <button
-                id="start_video_call_btn"
-                onClick={() => onStartCall && onStartCall("video")}
-                title="Start Video Call with participants"
-                className="flex items-center gap-1.5 px-3 h-9 rounded-lg text-white text-[12px] font-semibold transition-all cursor-pointer active:scale-95 shadow-xs"
-                style={{ background: "var(--brand)" }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "var(--brand-dark)")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "var(--brand)")}
-              >
-                <Video className="w-3.5 h-3.5" />
-                <span>Video Call</span>
-              </button>
-
-              <button
-                id="start_audio_call_btn"
-                onClick={() => onStartCall && onStartCall("audio")}
-                title="Start Audio Call with participants"
-                className="flex items-center gap-1.5 px-2.5 h-9 rounded-lg border text-[12px] font-semibold transition-all cursor-pointer active:scale-95 shadow-xs"
-                style={{
-                  color: "var(--ink-soft)",
-                  borderColor: "var(--border)",
-                }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <Phone className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">Audio</span>
-              </button>
-            </div>
-          )}
-
-          {isOwner && callState === "INVITING" && (
-            <div
-              className="flex items-center gap-2 px-3 h-9 rounded-lg border text-xs font-semibold"
-              style={{
-                background: "var(--brand-tint)",
-                borderColor: "var(--brand-tint-border)",
-                color: "var(--brand)",
-              }}
-            >
-              <span
-                className="w-2 h-2 rounded-full animate-ping"
-                style={{ background: "var(--brand)" }}
-              />
-              <span>Inviting...</span>
-            </div>
-          )}
-
-          {/* Owner Leave (Transfer Ownership mid-session) Button */}
-          {isOwner && (
-            <button
-              id="owner-leave-btn"
-              onClick={() => {
-                const others = sessionData.participants.filter(
-                  (p) => p.participantId !== sessionData.participantId
-                );
-                if (others.length > 0) {
-                  setSelectedNewOwnerId(others[0].participantId);
-                  setShowOwnerLeaveModal(true);
-                } else {
-                  setShowEndConfirm(true);
-                }
-              }}
-              className="hidden sm:flex items-center gap-1.5 px-3 h-9 rounded-lg border text-[13px] font-semibold transition-all cursor-pointer active:scale-95"
-              style={{
-                color: "var(--ink-soft)",
-                borderColor: "var(--border)",
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-              onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
-              title="Leave session without ending by transferring ownership"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Leave</span>
-            </button>
-          )}
-
-          {/* Terminate Session (Owner) or Leave Session (Joiner) - Exact from test2.html */}
-          {isOwner ? (
-            <button
-              id="terminate-btn"
-              onClick={() => setShowEndConfirm(true)}
-              className="hidden sm:flex items-center gap-1.5 px-3.5 h-9 rounded-lg text-white text-[13px] font-semibold transition-all cursor-pointer active:scale-95 shadow-xs"
-              style={{ background: "var(--danger)" }}
-              onMouseOver={(e) => (e.currentTarget.style.background = "#a8342e")}
-              onMouseOut={(e) => (e.currentTarget.style.background = "var(--danger)")}
-            >
-              <svg
-                className="w-4 h-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
-                <line x1="12" y1="2" x2="12" y2="12" />
-              </svg>
-              <span>End session</span>
-            </button>
-          ) : (
-            <button
-              id="leave-session-btn"
-              onClick={onLeaveSession}
-              className="hidden sm:flex items-center gap-1.5 px-3.5 h-9 rounded-lg text-white text-[13px] font-semibold transition-all cursor-pointer active:scale-95 shadow-xs"
-              style={{ background: "var(--danger)" }}
-              onMouseOver={(e) => (e.currentTarget.style.background = "#a8342e")}
-              onMouseOut={(e) => (e.currentTarget.style.background = "var(--danger)")}
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Leave</span>
-            </button>
-          )}
-
-          {/* Mobile Sidebar Toggle Button */}
+          {/* Mobile Sidebar Toggle */}
           <button
             id="mobile-sidebar-toggle"
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="lg:hidden w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer border"
-            style={{
-              color: "var(--ink-soft)",
-              borderColor: "var(--border)",
-            }}
-            title="Session details"
+            className="lg:hidden w-8 h-8 rounded-lg bg-white border border-[#e9edef] flex items-center justify-center text-[#54656f] hover:text-[#111b21] cursor-pointer"
+            title="Toggle Participants"
           >
             <svg
-              className="w-4.5 h-4.5"
+              className="w-4 h-4"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -624,45 +485,274 @@ export const ActiveSessionView = ({
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
             </svg>
           </button>
         </div>
       </header>
 
-      {/* 2. MAIN DUAL-PANEL LAYOUT (Exact layout from test2.html) */}
+      {/* 2. SUBHEADER / SESSION ACTION BAR (From test.html) */}
+      <div
+        id="session-action-bar"
+        className="px-3 sm:px-6 py-2.5 bg-white border-b border-[#e9edef] flex flex-wrap items-center justify-between gap-2.5 shrink-0"
+      >
+        {/* Session, Passkey, Copy Link, Add Device, Test in Tab */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* SESSION: <id> with copy icon */}
+          <div
+            id="session-pill"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f0f2f5] border border-[#e9edef] text-xs"
+          >
+            <span className="text-[#54656f] font-semibold text-[11px] uppercase tracking-wider">
+              SESSION:
+            </span>
+            <span id="session-value" className="font-mono font-bold text-[#111b21]">
+              {sessionData.sessionId}
+            </span>
+            <button
+              onClick={handleCopyId}
+              id="session-copy-btn"
+              className="ml-1 text-[#54656f] hover:text-[#00a884] transition-colors cursor-pointer"
+              title="Copy Session ID"
+            >
+              {copiedId ? (
+                <Check className="w-3.5 h-3.5 text-[#00a884]" />
+              ) : (
+                <svg
+                  className="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {/* PASSKEY: <key> with copy icon */}
+          <div
+            id="passkey-pill"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#fef9c3] border border-[#fde047] text-xs"
+          >
+            <span className="text-[#854d0e] font-semibold text-[11px] uppercase tracking-wider">
+              PASSKEY:
+            </span>
+            <span id="passkey-value" className="font-mono font-bold text-[#713f12]">
+              {sessionData.passkey}
+            </span>
+            <button
+              onClick={handleCopyKey}
+              id="passkey-copy-btn"
+              className="ml-1 text-[#854d0e] hover:text-[#ca8a04] transition-colors cursor-pointer"
+              title="Copy Passkey"
+            >
+              {copiedKey ? (
+                <Check className="w-3.5 h-3.5 text-amber-600" />
+              ) : (
+                <svg
+                  className="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {/* COPY INVITE LINK BUTTON */}
+          <button
+            id="copy-invite-btn"
+            onClick={handleCopyLink}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#00a884] text-[#00a884] hover:bg-[#e7f7f3] text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+            <span id="copy-invite-text">
+              {copiedLink ? "COPIED!" : "COPY INVITE LINK"}
+            </span>
+          </button>
+
+          {/* ADD DEVICE BUTTON (Opens responsive modal with QR code & credentials) */}
+          <button
+            id="add-device-btn"
+            onClick={() => setShowAddDeviceModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#e7f7f3] border border-[#00a884]/40 text-[#008069] hover:bg-[#d1f2eb] text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
+            title="Scan QR Code or link another phone/tablet"
+          >
+            <QrCode className="w-3.5 h-3.5 text-[#00a884]" />
+            <span>ADD DEVICE</span>
+          </button>
+
+          {/* TEST IN TAB BUTTON */}
+          <button
+            id="test-tab-btn"
+            onClick={handleOpenTestTab}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#e9edef] text-[#54656f] hover:text-[#111b21] hover:bg-[#f0f2f5] text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+            <span>TEST IN TAB</span>
+          </button>
+        </div>
+
+        {/* Right Action Buttons: Calling controls, Terminate / Leave */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Owner WebRTC Call Controls */}
+          {isOwner && callState === "IDLE" && (
+            <div className="flex items-center gap-1.5">
+              <button
+                id="start_video_call_btn"
+                onClick={() => onStartCall && onStartCall("video")}
+                title="Start Video Call with participants"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#00a884] hover:bg-[#008f6f] text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
+              >
+                <Video className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">VIDEO CALL</span>
+              </button>
+
+              <button
+                id="start_audio_call_btn"
+                onClick={() => onStartCall && onStartCall("audio")}
+                title="Start Audio Call with participants"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#008069] hover:bg-[#006e5a] text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
+              >
+                <Phone className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">AUDIO CALL</span>
+              </button>
+            </div>
+          )}
+
+          {isOwner && callState === "INVITING" && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#e7f7f3] border border-[#00a884]/30 text-[#008069] text-xs font-bold">
+              <span className="w-2 h-2 rounded-full bg-[#00a884] animate-ping" />
+              <span>INVITING...</span>
+            </div>
+          )}
+
+          {/* Terminate Session Button (Owner) or Leave Session (Joiner) */}
+          {isOwner ? (
+            <div className="flex items-center gap-1.5">
+              {/* Owner Leave Button: Allows leaving in mid by transferring ownership */}
+              <button
+                id="owner-leave-btn"
+                onClick={() => {
+                  const otherParticipants = sessionData.participants.filter(
+                    (p) => p.participantId !== sessionData.participantId
+                  );
+                  if (otherParticipants.length > 0) {
+                    setSelectedNewOwnerId(otherParticipants[0].participantId);
+                    setShowOwnerLeaveModal(true);
+                  } else {
+                    setShowEndConfirm(true);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f0f2f5] hover:bg-[#e9edef] border border-[#e9edef] text-[#54656f] hover:text-[#111b21] text-xs font-bold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
+                title="Leave session without ending by transferring ownership"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>LEAVE</span>
+              </button>
+
+              <button
+                id="terminate-btn"
+                onClick={() => setShowEndConfirm(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#ea0038] hover:bg-[#c90030] text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
+                title="Terminate session and wipe RAM buffer for everyone"
+              >
+                <Power className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">TERMINATE</span>
+                <span className="sm:hidden">END</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              id="leave-session-btn"
+              onClick={onLeaveSession}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#f0f2f5] hover:bg-[#e9edef] border border-[#e9edef] text-[#54656f] hover:text-[#111b21] text-xs font-bold uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-2xs"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>LEAVE</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 3. MAIN DUAL-PANEL CONTAINER (From test.html) */}
       <div className="flex-1 flex overflow-hidden relative min-h-0 w-full">
-        {/* SIDEBAR PANEL (Exact structure from test2.html) */}
+        {/* LEFT SIDEBAR: PARTICIPANTS & SECURITY TELEMETRY (From test.html) */}
         <aside
           id="sidebar-panel"
-          className={`w-[300px] lg:w-80 flex flex-col shrink-0 absolute lg:relative inset-y-0 left-0 z-20 transition-transform duration-200 ${
+          className={`w-72 lg:w-80 bg-white border-r border-[#e9edef] flex flex-col justify-between shrink-0 absolute lg:relative inset-y-0 left-0 z-30 transition-transform duration-200 ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-          } overflow-y-auto border-r`}
-          style={{
-            background: "var(--surface)",
-            borderColor: "var(--border)",
-          }}
+          } shadow-lg lg:shadow-none h-full min-h-0`}
         >
-          {/* Sidebar Top Title */}
-          <div
-            className="h-14 px-4 flex items-center justify-between shrink-0 border-b"
-            style={{ borderColor: "var(--border)" }}
-          >
-            <h2
-              className="text-[13px] font-bold"
-              style={{ color: "var(--ink)" }}
-            >
-              Session details
-            </h2>
+          {/* Sidebar Header: PARTICIPANTS (count) */}
+          <div className="h-[60px] px-4 bg-[#f0f2f5] border-b border-[#e9edef] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f]">
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              </div>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-[#111b21]">
+                PARTICIPANTS
+              </h2>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold font-mono bg-[#00a884] text-white">
+                ({sessionData.participants.length})
+              </span>
+            </div>
             <button
               onClick={() => setSidebarOpen(false)}
-              className="lg:hidden p-1 rounded-md cursor-pointer"
-              style={{ color: "var(--ink-faint)" }}
+              className="lg:hidden text-[#54656f] hover:text-[#111b21] p-1 cursor-pointer"
             >
               <svg
-                className="w-4.5 h-4.5"
+                className="w-5 h-5"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -676,478 +766,233 @@ export const ActiveSessionView = ({
             </button>
           </div>
 
-          {/* Connection Card (Exact from test2.html) */}
-          <div
-            className="p-2 space-y-2 border-b"
-            style={{ borderColor: "var(--border)" }}
-          >
-            <div
-              id="session-pill"
-              className="rounded-xl p-1.5 space-y-3 border "
-              style={{
-                background: "var(--surface-alt)",
-                borderColor: "var(--border)",
-              }}
-            >
-              {/* Session ID */}
-              <div className="flex items-center justify-between ">
-                <span
-                  className="text-[11px] font-semibold"
-                  style={{ color: "var(--ink-faint)" }}
-                >
-                  Session ID
-                </span>
-                <button
-                  id="session-copy-btn"
-                  onClick={handleCopyId}
-                  title="Copy session ID"
-                  className="p-1 rounded-md cursor-pointer transition-colors"
-                  style={{ color: "var(--ink-soft)" }}
-                >
-                  {copiedId ? (
-                    <Check className="w-3.5 h-3.5" style={{ color: "var(--success)" }} />
-                  ) : (
-                    <svg
-                      className="w-3.5 h-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-              <div
-                id="session-value"
-                className="font-mono text-[15px] font-semibold tracking-wide "
-                style={{ color: "var(--ink)" }}
-              >
-                {sessionData.sessionId}
-              </div>
+          {/* Participants List - Differentiated UI for Current User vs Other Participants */}
+          <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-2.5">
+            {sessionData.participants.map((p) => {
+              const isCurrentUser =
+                p.participantId === sessionData.participantId;
+              const initials = getInitials(p.username);
 
-              <div className="h-px" style={{ background: "var(--border)" }} />
-
-              {/* Passkey */}
-              <div id="passkey-pill" className="flex items-center justify-between">
-                <span
-                  className="text-[11px] font-semibold"
-                  style={{ color: "var(--gold)" }}
-                >
-                  Passkey
-                </span>
-                <button
-                  id="passkey-copy-btn"
-                  onClick={handleCopyKey}
-                  title="Copy passkey"
-                  className="p-1 rounded-md cursor-pointer transition-colors"
-                  style={{ color: "var(--gold)" }}
-                >
-                  {copiedKey ? (
-                    <Check className="w-3.5 h-3.5" style={{ color: "var(--gold)" }} />
-                  ) : (
-                    <svg
-                      className="w-3.5 h-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-              <div
-                id="passkey-value"
-                className="font-mono text-[15px] font-semibold tracking-wide"
-                style={{ color: "var(--ink)" }}
-              >
-                {sessionData.passkey}
-              </div>
-            </div>
-
-            {/* Copy Invite Link Button (Exact from test2.html) */}
-            <button
-              id="copy-invite-btn"
-              onClick={handleCopyLink}
-              className="w-full flex items-center justify-center gap-2 h-10 rounded-lg text-white text-[13px] font-semibold transition-all cursor-pointer active:scale-[0.98] shadow-xs"
-              style={{ background: "var(--brand)" }}
-              onMouseOver={(e) => (e.currentTarget.style.background = "var(--brand-dark)")}
-              onMouseOut={(e) => (e.currentTarget.style.background = "var(--brand)")}
-            >
-              <svg
-                className="w-4 h-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-              </svg>
-              <span id="copy-invite-text">
-                {copiedLink ? "Copied" : "Copy invite link"}
-              </span>
-            </button>
-
-            {/* Add Device Button */}
-            <button
-              id="add-device-btn"
-              onClick={() => setShowAddDeviceModal(true)}
-              className="w-full flex items-center justify-center gap-2 h-10 rounded-lg text-[13px] font-semibold transition-all cursor-pointer active:scale-[0.98] border shadow-2xs"
-              style={{
-                color: "var(--brand)",
-                background: "var(--brand-tint)",
-                borderColor: "var(--brand-tint-border)",
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.background = "#e5e3f8")}
-              onMouseOut={(e) => (e.currentTarget.style.background = "var(--brand-tint)")}
-              title="Scan QR Code or link another phone/tablet"
-            >
-              <QrCode className="w-4 h-4" />
-              <span>Add Device / QR</span>
-            </button>
-
-            {/* Simulate a reply / Test in Tab Button (Exact from test2.html) */}
-            <button
-              id="test-tab-btn"
-              onClick={handleOpenTestTab}
-              className="w-full flex items-center justify-center gap-2 h-10 rounded-lg text-[13px] font-semibold transition-all cursor-pointer active:scale-[0.98] border"
-              style={{
-                color: "var(--ink-soft)",
-                borderColor: "var(--border)",
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-              onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              <svg
-                className="w-4 h-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-              <span>Test in Tab / Peer</span>
-            </button>
-
-            {/* Mobile Terminate or Leave Button */}
-            {isOwner ? (
-              <button
-                id="terminate-btn-mobile"
-                onClick={() => setShowEndConfirm(true)}
-                className="sm:hidden w-full flex items-center justify-center gap-2 h-10 rounded-lg text-white text-[13px] font-semibold cursor-pointer active:scale-[0.98]"
-                style={{ background: "var(--danger)" }}
-              >
-                End session
-              </button>
-            ) : (
-              <button
-                id="leave-btn-mobile"
-                onClick={onLeaveSession}
-                className="sm:hidden w-full flex items-center justify-center gap-2 h-10 rounded-lg text-white text-[13px] font-semibold cursor-pointer active:scale-[0.98]"
-                style={{ background: "var(--danger)" }}
-              >
-                Leave session
-              </button>
-            )}
-          </div>
-
-          {/* Participants List (Exact from test2.html) */}
-          <div className="p-4 flex-1 overflow-y-auto">
-            <div className="flex items-center gap-2 mb-3">
-              <span
-                className="text-[13px] font-bold"
-                style={{ color: "var(--ink)" }}
-              >
-                Participants
-              </span>
-              <span
-                className="text-[11px] font-mono px-1.5 py-0.5 rounded"
-                style={{
-                  background: "var(--surface-alt)",
-                  color: "var(--ink-faint)",
-                }}
-              >
-                {sessionData.participants.length}
-              </span>
-            </div>
-
-            <div className="space-y-2.5">
-              {sessionData.participants.map((p) => {
-                const isCurrentUser =
-                  p.participantId === sessionData.participantId;
-                const initials = getInitials(p.username);
-
-                if (isCurrentUser) {
-                  return (
-                    <div
-                      key={p.participantId}
-                      id={`participant-me-${p.participantId}`}
-                      className="flex items-center justify-between p-2.5 rounded-xl transition-colors border"
-                      style={{
-                        background: "var(--surface-alt)",
-                        borderColor: "var(--border)",
-                      }}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="relative shrink-0">
-                          <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-[12px] text-white"
-                            style={{ background: "var(--brand)" }}
-                          >
-                            {initials}
-                          </div>
-                          <span
-                            className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full"
-                            style={{
-                              background: "var(--success)",
-                              border: "2px solid var(--surface-alt)",
-                            }}
-                          />
-                        </div>
-                        <div className="truncate min-w-0">
-                          <div
-                            className="font-semibold text-[13px] truncate"
-                            style={{ color: "var(--ink)" }}
-                          >
-                            {p.username}
-                          </div>
-                          <div
-                            className="text-[11px]"
-                            style={{ color: "var(--ink-faint)" }}
-                          >
-                            Active now
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {p.isOwner && (
-                          <span
-                            id="badge-owner-me"
-                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border"
-                            style={{
-                              background: "var(--gold-tint)",
-                              color: "var(--gold)",
-                              borderColor: "var(--gold-tint-border)",
-                            }}
-                          >
-                            Owner
-                          </span>
-                        )}
-                        <span
-                          className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold"
-                          style={{
-                            background: "var(--success-tint)",
-                            color: "var(--success)",
-                          }}
-                        >
-                          You
-                        </span>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // Other participant
+              if (isCurrentUser) {
+                // CURRENT USER CARD: Distinct emerald highlight, prominent YOU tag, glowing avatar ring
                 return (
                   <div
                     key={p.participantId}
-                    id={`participant-peer-${p.participantId}`}
-                    className="flex items-center justify-between p-2.5 rounded-xl transition-colors border bg-white"
-                    style={{
-                      borderColor: "var(--border)",
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-                    onMouseOut={(e) => (e.currentTarget.style.background = "#ffffff")}
+                    id={`participant-me-${p.participantId}`}
+                    className="p-3 rounded-xl bg-gradient-to-r from-[#e7f7f3] via-[#ecfbf7] to-[#f0fdf9] border-2 border-[#00a884]/70 shadow-xs transition-all relative overflow-hidden ring-1 ring-[#00a884]/20"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="relative shrink-0">
-                        <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-[12px] text-white"
-                          style={{ background: "var(--ink-soft)" }}
-                        >
-                          {initials}
-                        </div>
+                    {/* Top small header tag for self */}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-[#00a884] text-white shadow-2xs">
+                        YOUR ACCOUNT
+                      </span>
+                      {p.isOwner && (
                         <span
-                          className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full"
-                          style={{
-                            background: "var(--success)",
-                            border: "2px solid #ffffff",
-                          }}
-                        />
-                      </div>
-                      <div className="truncate min-w-0">
-                        <div
-                          className="font-semibold text-[13px] truncate"
-                          style={{ color: "var(--ink)" }}
+                          id="badge-owner-me"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#fef08a] text-[#854d0e] border border-[#facc15]"
                         >
-                          {p.username}
-                        </div>
-                        <div
-                          className="text-[11px]"
-                          style={{ color: "var(--ink-faint)" }}
-                        >
-                          Connected peer
-                        </div>
-                      </div>
+                          <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
+                            <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5m14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z" />
+                          </svg>
+                          HOST / OWNER
+                        </span>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-1 shrink-0">
-                      {p.isOwner ? (
-                        <span
-                          id="badge-owner-peer"
-                          className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border"
-                          style={{
-                            background: "var(--gold-tint)",
-                            color: "var(--gold)",
-                            borderColor: "var(--gold-tint-border)",
-                          }}
-                        >
-                          Owner
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                          style={{
-                            background: "var(--surface-alt)",
-                            color: "var(--ink-faint)",
-                          }}
-                        >
-                          Joiner
-                        </span>
-                      )}
-
-                      {/* Owner controls for joiner */}
-                      {isOwner && !p.isOwner && (
-                        <div className="flex items-center gap-1 ml-1">
-                          <button
-                            onClick={() => setTransferTarget(p)}
-                            title={`Make ${p.username} owner`}
-                            className="p-1 rounded cursor-pointer transition-colors border"
-                            style={{
-                              background: "var(--gold-tint)",
-                              color: "var(--gold)",
-                              borderColor: "var(--gold-tint-border)",
-                            }}
-                          >
-                            <Crown className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={() => setKickTarget(p)}
-                            title={`Kick and ban ${p.username}`}
-                            className="p-1 rounded cursor-pointer transition-colors border"
-                            style={{
-                              background: "var(--danger-tint)",
-                              color: "var(--danger)",
-                              borderColor: "#f5c6c4",
-                            }}
-                          >
-                            <UserX className="w-3 h-3" />
-                          </button>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Prominent Avatar for Current User with double ring */}
+                        <div className="relative shrink-0">
+                          <div className="w-11 h-11 rounded-full bg-[#008069] text-white flex items-center justify-center font-extrabold text-sm shadow-xs ring-2 ring-[#00a884] ring-offset-2 ring-offset-white">
+                            {initials}
+                          </div>
+                          <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white bg-[#00a884] flex items-center justify-center">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                          </span>
                         </div>
-                      )}
+
+                        <div className="min-w-0 truncate">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-extrabold text-sm sm:text-base text-[#0f5132] truncate">
+                              {p.username}
+                            </span>
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-[#00a884]/15 text-[#006e56] border border-[#00a884]/30">
+                              You
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-medium text-[#008069] flex items-center gap-1 mt-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#00a884]" />
+                            <span>Active now • This Device</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
-              })}
-            </div>
+              }
+
+              // OTHER JOINER / PARTICIPANT CARD: Clean neutral slate theme, distinct avatar & JOINER tag
+              return (
+                <div
+                  key={p.participantId}
+                  id={`participant-peer-${p.participantId}`}
+                  className="p-3 rounded-xl bg-white border border-[#cbd5e1] hover:border-[#94a3b8] hover:bg-[#f8fafc] shadow-2xs transition-all"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                      {p.isOwner ? "SESSION HOST" : "GUEST / JOINER"}
+                    </span>
+                    {p.isOwner && (
+                      <span
+                        id="badge-owner-peer"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#fef08a] text-[#854d0e] border border-[#facc15]"
+                      >
+                        <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
+                          <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5m14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z" />
+                        </svg>
+                        OWNER
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Avatar for Other Joiner: Distinct Slate/Charcoal Avatar */}
+                      <div className="relative shrink-0">
+                        <div className="w-10 h-10 rounded-full bg-[#334155] text-white flex items-center justify-center font-bold text-sm shadow-2xs border border-slate-300">
+                          {initials}
+                        </div>
+                        <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white bg-emerald-500" />
+                      </div>
+
+                      <div className="min-w-0 truncate">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="font-semibold text-sm text-[#1e293b] truncate">
+                            {p.username}
+                          </span>
+                          {!p.isOwner && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                              Joiner
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-[#64748b] flex items-center gap-1 mt-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span>Connected peer</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Owner controls for other joiners */}
+                    {isOwner && !p.isOwner && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => setTransferTarget(p)}
+                          title={`Transfer session ownership to ${p.username}`}
+                          className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Crown className="w-3 h-3 text-amber-600" />
+                          <span className="hidden sm:inline">MAKE OWNER</span>
+                        </button>
+
+                        <button
+                          onClick={() => setKickTarget(p)}
+                          title={`Kick and permanently ban ${p.username}`}
+                          className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-700 text-[10px] font-bold uppercase transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <UserX className="w-3 h-3" />
+                          <span>KICK</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Bottom Telemetry (Exact from test2.html) */}
+          {/* BOTTOM STORAGE TELEMETRY from Original UI */}
           <div
             id="storage-telemetry-box"
-            className="p-4 text-[11px] flex items-center justify-between shrink-0 border-t"
-            style={{
-              color: "var(--ink-faint)",
-              borderColor: "var(--border)",
-            }}
+            className="p-3.5 bg-[#f0f2f5] border-t border-[#e9edef] space-y-2 shrink-0"
           >
-            <span>
-              Memory-only storage (
-              <strong id="storage-mode-val" style={{ color: "var(--success)" }}>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#54656f] font-semibold text-[11px]">
+                STORAGE MODE:
+              </span>
+              <span
+                id="storage-mode-val"
+                className="font-mono font-bold text-[11px] text-[#008069] bg-white px-2 py-0.5 rounded border border-[#00a884]/30"
+              >
                 RAM ONLY
-              </strong>
-              )
-            </span>
-            <span id="purge-on-close-val" className="font-mono">
-              AES-GCM-256
-            </span>
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#54656f] font-semibold text-[11px]">
+                PURGE ON CLOSE:
+              </span>
+              <span
+                id="purge-on-close-val"
+                className="font-mono font-bold text-[11px] text-[#008069] bg-white px-2 py-0.5 rounded border border-[#00a884]/30"
+              >
+                HARD WIPED
+              </span>
+            </div>
+            <div className="pt-1.5 text-[10px] text-[#667781] flex items-center justify-between">
+              <span>Zero-Disk Trace</span>
+              <span className="font-mono">AES-GCM-256</span>
+            </div>
           </div>
         </aside>
 
-        {/* 3. CHAT CANVAS & CONVERSATION VIEW (Exact from test2.html) */}
-        <main className="flex-1 flex flex-col chat-canvas relative overflow-hidden min-h-0 h-full">
-          {/* Mobile backdrop */}
+        {/* MAIN CHAT CANVAS (From test.html) */}
+        <main className="flex-1 flex flex-col chat-wallpaper relative overflow-hidden min-h-0 h-full">
+          {/* Mobile Sidebar Backdrop Overlay */}
           {sidebarOpen && (
             <div
               id="sidebar-backdrop"
               onClick={() => setSidebarOpen(false)}
-              className="fixed inset-0 bg-black/30 z-10 lg:hidden cursor-pointer"
+              className="fixed inset-0 bg-black/40 z-20 lg:hidden cursor-pointer"
             />
           )}
 
-          {/* Chat Canvas Subheader (Exact from test2.html) */}
-          <div
-            className="h-14 px-4 sm:px-6 flex items-center justify-between z-10 shrink-0 border-b bg-white"
-            style={{ borderColor: "var(--border)" }}
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div
-                className="w-8 h-8 rounded-full text-white flex items-center justify-center font-bold text-[11px] shrink-0"
-                style={{ background: "var(--brand)" }}
-              >
-                {getInitials(peerDisplayName)}
-              </div>
-              <div className="leading-tight truncate">
-                <div
-                  className="font-semibold text-[13.5px] truncate"
-                  style={{ color: "var(--ink)" }}
-                >
-                  {peerDisplayName}
+          {/* Chat Area Subheader: Session Creator's Meet Name & Joiner Name */}
+          <div className="h-[60px] px-4 bg-[#f0f2f5] border-b border-[#e9edef] flex items-center justify-between z-10 shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="relative shrink-0">
+                <div className="w-10 h-10 rounded-full bg-[#00a884] text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+                  {joinerParticipants.length > 0
+                    ? getInitials(joinerParticipants[0].username)
+                    : getInitials(creatorName)}
                 </div>
-                <div
-                  className="flex items-center gap-1.5 text-[11px]"
-                  style={{ color: "var(--ink-faint)" }}
-                >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ background: "var(--success)" }}
-                  />
-                  <span>Online</span>
-                  <span style={{ color: "var(--border)" }}>|</span>
-                  <svg
-                    className="w-3 h-3"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="var(--ink-faint)"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="3" y="11" width="18" height="11" rx="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                  <span>Encrypted</span>
-                  <span className="hidden sm:inline" style={{ color: "var(--border)" }}>|</span>
-                  <span className="hidden sm:inline truncate">
-                    Host: <strong style={{ color: "var(--ink)" }}>{creatorName}</strong>
+                <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#f0f2f5] bg-[#00a884]" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-sm sm:text-base text-[#111b21] tracking-tight truncate">
+                    {creatorMeetTitle}
                   </span>
+                  <span className="text-[#8696a0] font-normal text-xs">•</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-[#e7f7f3] text-[#008069] border border-[#00a884]/30 shrink-0">
+                    <span className="text-[10px] uppercase font-bold text-[#54656f]">
+                      Joiner:
+                    </span>
+                    <span className="font-bold text-[#008069]">
+                      {joinerDisplayNames}
+                    </span>
+                  </span>
+                </div>
+                <div className="text-xs text-[#54656f] font-medium flex items-center flex-wrap gap-1.5 mt-0.5">
+                  <span className="inline-flex items-center gap-1 text-[#00a884] font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-pulse"></span>
+                    <span>online</span>
+                  </span>
+                  <span className="text-[#8696a0]">•</span>
+                  <span>
+                    Host: <strong className="text-[#111b21] font-semibold">{creatorName}</strong>
+                  </span>
+                  <span className="text-[#8696a0]">•</span>
+                  <span>E2EE Mesh</span>
                 </div>
               </div>
             </div>
@@ -1155,58 +1000,36 @@ export const ActiveSessionView = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowAddDeviceModal(true)}
-                className="hidden sm:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-xs font-semibold cursor-pointer transition-colors"
-                style={{
-                  color: "var(--ink-soft)",
-                  borderColor: "var(--border)",
-                  background: "var(--surface)",
-                }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "var(--surface)")}
-                title="Add Device or QR"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-[#e9edef] hover:bg-[#e9edef] text-xs text-[#54656f] hover:text-[#111b21] transition-colors cursor-pointer"
+                title="Add Device or Scan QR"
               >
-                <Smartphone className="w-3.5 h-3.5" style={{ color: "var(--brand)" }} />
-                <span>Add Device</span>
+                <Smartphone className="w-3.5 h-3.5 text-[#00a884]" />
+                <span className="font-semibold">Add Device</span>
               </button>
             </div>
           </div>
 
-          {/* Incoming Call In-Session Banner */}
+          {/* Incoming Call In-Session Banner (Joiner notification) */}
           {incomingCall && !isOwner && callState !== "ACTIVE" && (
-            <div
-              className="px-4 py-3 flex flex-wrap items-center justify-between gap-3 border-b shadow-xs z-20 shrink-0"
-              style={{
-                background: "var(--gold-tint)",
-                borderColor: "var(--gold-tint-border)",
-              }}
-            >
+            <div className="bg-[#fef9c3] border-b border-[#fde047] px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xs z-20 shrink-0">
               <div className="flex items-center gap-3">
                 <span className="relative flex h-3.5 w-3.5">
-                  <span
-                    className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
-                    style={{ background: "var(--brand)" }}
-                  />
-                  <span
-                    className="relative inline-flex rounded-full h-3.5 w-3.5"
-                    style={{ background: "var(--brand)" }}
-                  />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00a884] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-[#00a884]"></span>
                 </span>
                 <div>
-                  <div
-                    className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5"
-                    style={{ color: "var(--gold)" }}
-                  >
+                  <div className="text-xs font-bold uppercase text-[#713f12] tracking-wider flex items-center gap-1.5">
                     {incomingCall.callType === "video" ? (
-                      <Video className="w-3.5 h-3.5" />
+                      <Video className="w-3.5 h-3.5 text-[#00a884]" />
                     ) : (
-                      <Phone className="w-3.5 h-3.5" />
+                      <Phone className="w-3.5 h-3.5 text-[#00a884]" />
                     )}
                     <span>
-                      Incoming {incomingCall.callType === "video" ? "Video" : "Audio"} Call
+                      INCOMING {incomingCall.callType === "video" ? "VIDEO" : "AUDIO"} CALL
                     </span>
                   </div>
-                  <span className="block text-[11px]" style={{ color: "var(--ink-soft)" }}>
-                    {incomingCall.callerName || "Host"} is calling the session
+                  <span className="block text-[11px] text-[#854d0e]">
+                    {incomingCall.callerName || "Session Owner"} is calling the session
                   </span>
                 </div>
               </div>
@@ -1215,19 +1038,14 @@ export const ActiveSessionView = ({
                 <button
                   id="banner_decline_call_button"
                   onClick={onDeclineCall}
-                  className="px-3 py-1.5 bg-white border text-xs font-semibold rounded-lg cursor-pointer transition-colors"
-                  style={{
-                    color: "var(--ink-soft)",
-                    borderColor: "var(--border)",
-                  }}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-[#e9edef] text-[#54656f] font-semibold text-xs uppercase tracking-wider rounded-lg cursor-pointer"
                 >
                   Decline
                 </button>
                 <button
                   id="banner_accept_call_button"
                   onClick={onAcceptCall}
-                  className="px-3 py-1.5 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  style={{ background: "var(--brand)" }}
+                  className="px-3 py-1.5 bg-[#00a884] hover:bg-[#008f6f] text-white font-bold text-xs uppercase tracking-wider rounded-lg flex items-center gap-1.5 cursor-pointer shadow-2xs"
                 >
                   {incomingCall.callType === "video" ? (
                     <Video className="w-3.5 h-3.5" />
@@ -1240,7 +1058,7 @@ export const ActiveSessionView = ({
             </div>
           )}
 
-          {/* Active P2P WebRTC Video / Audio Call Window */}
+          {/* Phase 3: Active P2P WebRTC Video / Audio Call Window */}
           {(callState === "ACTIVE" || (callState === "INVITING" && isOwner)) && (
             <div className="shrink-0 px-4 pt-3 z-20">
               <CallWindow
@@ -1261,7 +1079,7 @@ export const ActiveSessionView = ({
             </div>
           )}
 
-          {/* Messages Container (Exact styling & structure from test2.html) */}
+          {/* Messages Viewport */}
           <div
             ref={messagesContainerRef}
             id="messages-container"
@@ -1274,27 +1092,18 @@ export const ActiveSessionView = ({
                 onSendFile(file);
               }
             }}
-            className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 z-10 min-h-0"
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 space-y-4 z-10"
           >
-            {/* Empty State Banner (Exact from test2.html) */}
+            {/* Empty State / Connection Banner from Original UI (test.html) */}
             {messages.length === 0 && fileTransfers.length === 0 && (
               <div
                 id="secure-line-banner"
-                className="max-w-sm mx-auto my-8 p-6 rounded-2xl text-center border shadow-xs"
-                style={{
-                  background: "var(--surface)",
-                  borderColor: "var(--border)",
-                }}
+                className="max-w-md mx-auto my-6 p-6 rounded-2xl bg-white border border-[#e9edef] shadow-2xs text-center"
               >
-                <div
-                  className="w-11 h-11 mx-auto mb-3 rounded-full flex items-center justify-center"
-                  style={{
-                    background: "var(--brand-tint)",
-                    color: "var(--brand)",
-                  }}
-                >
+                {/* Broadcast wave icon ((o)) from original UI */}
+                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-[#e7f7f3] text-[#008069] flex items-center justify-center">
                   <svg
-                    className="w-5 h-5"
+                    className="w-6 h-6 animate-pulse"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -1302,41 +1111,48 @@ export const ActiveSessionView = ({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   >
-                    <rect x="3" y="11" width="18" height="11" rx="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" />
+                    <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" />
+                    <circle cx="12" cy="12" r="2" />
+                    <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" />
+                    <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" />
                   </svg>
                 </div>
+
                 <h3
-                  className="text-[14px] font-bold"
-                  style={{ color: "var(--ink)" }}
+                  id="secure-line-title"
+                  className="text-xs sm:text-sm font-bold tracking-wider uppercase text-[#111b21]"
                 >
-                  Line secured
+                  SECURE LINE CONNECTED
                 </h3>
+
                 <p
-                  className="mt-1.5 text-[13px] leading-relaxed"
-                  style={{ color: "var(--ink-soft)" }}
+                  id="secure-line-desc"
+                  className="mt-2 text-xs sm:text-sm text-[#54656f] leading-relaxed"
                 >
-                  Send a message to start. Everything here lives in memory and
-                  disappears when the session ends.
+                  Send a text to begin secure communication. All messages are
+                  ephemeral and destroyed when the session ends.
                 </p>
+
+                <div className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-[#00a884] font-medium bg-[#e7f7f3] px-3 py-1 rounded-full">
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                  </svg>
+                  End-to-End Encrypted Session Active
+                </div>
               </div>
             )}
 
-            {/* Dynamic Live Messages Container */}
-            <div id="dynamic-messages" className="space-y-3 max-w-2xl mx-auto flex flex-col">
+            {/* Dynamic Container for Live User Messages & File Transfers */}
+            <div id="dynamic-messages" className="flex flex-col space-y-2.5">
               {[...messages, ...fileTransfers].map((m) => {
                 if (m.isSystem) {
                   return (
                     <div
                       key={m.messageId}
-                      className="my-2 py-1 px-3.5 border text-[11px] font-semibold text-center mx-auto max-w-fit rounded-lg shadow-xs flex items-center gap-1.5"
-                      style={{
-                        background: "var(--surface)",
-                        borderColor: "var(--border)",
-                        color: "var(--ink-soft)",
-                      }}
+                      className="my-2 py-1 px-3 bg-white/80 backdrop-blur-xs border border-[#e9edef] text-[11px] text-[#54656f] font-semibold text-center mx-auto max-w-fit rounded-lg shadow-2xs flex items-center gap-1.5"
                     >
-                      <Info className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--brand)" }} />
+                      <Info className="w-3 h-3 text-[#00a884] shrink-0" />
                       <span>{m.text}</span>
                     </div>
                   );
@@ -1345,7 +1161,7 @@ export const ActiveSessionView = ({
                 const isMe =
                   m.senderId === sessionData.participantId || m.isLocal;
 
-                // File message transfer
+                // File Transfers and Media
                 if (
                   m.isTransferring ||
                   m.objectUrl ||
@@ -1373,48 +1189,34 @@ export const ActiveSessionView = ({
                   minute: "2-digit",
                 });
 
-                // Self bubble (Exact from test2.html: brand-tint background, rounded-br-[4px])
+                // Sent Message Bubble (isMe) with soft mint background & blue double checks
                 if (isMe) {
                   return (
                     <div
                       key={m.messageId}
                       className="flex w-full justify-end my-1"
                     >
-                      <div className="relative group max-w-[82%] sm:max-w-[65%] flex flex-col items-end">
+                      <div className="relative group max-w-[85%] sm:max-w-[70%] md:max-w-[560px] flex flex-col items-end">
                         <div
                           onDoubleClick={() => onReactMessage?.(m.messageId, "❤️")}
-                          className="msg-in w-fit min-w-[76px] p-3 rounded-2xl text-[14px] relative border shadow-xs"
-                          style={{
-                            background: "var(--brand-tint)",
-                            borderColor: "var(--brand-tint-border)",
-                            borderBottomRightRadius: "4px",
-                          }}
+                          className="w-fit min-w-[76px] bg-[#d9fdd3] px-3 py-2 rounded-xl rounded-tr-none shadow-2xs text-sm relative border border-[#c1e8ba] transition-all"
                         >
-                          <div
-                            className="break-words whitespace-pre-wrap leading-relaxed select-text"
-                            style={{ color: "var(--ink)" }}
-                          >
+                          <div className="break-words whitespace-pre-wrap text-[#111b21] leading-relaxed select-text text-sm">
                             {m.text}
                           </div>
-                          <div
-                            className="text-[10px] text-right mt-1 flex justify-end items-center gap-1 select-none"
-                            style={{ color: "var(--ink-faint)" }}
-                          >
+                          <div className="text-[10px] text-[#667781] text-right mt-1 flex justify-end items-center gap-1 select-none">
                             <span>{timeStr}</span>
+                            {/* Blue double checkmarks */}
                             <svg
-                              className="w-3.5 h-3.5"
-                              fill="none"
-                              stroke="var(--brand)"
-                              strokeWidth="2.3"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                              className="w-3.5 h-3.5 text-[#53bdeb] shrink-0"
+                              fill="currentColor"
                               viewBox="0 0 24 24"
                             >
-                              <polyline points="20 6 9 17 4 12" />
+                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
                             </svg>
                           </div>
 
-                          {/* Message Reactions */}
+                          {/* WhatsApp / Instagram reactions */}
                           <MessageReactions
                             messageId={m.messageId}
                             reactions={m.reactions}
@@ -1429,54 +1231,37 @@ export const ActiveSessionView = ({
                   );
                 }
 
-                // Peer bubble (Exact from test2.html: white background, brand sender name, rounded-bl-[4px])
+                // Received Message Bubble (peer) with clean white background
                 return (
                   <div
                     key={m.messageId}
                     className="flex w-full justify-start my-1"
                   >
-                    <div className="relative group max-w-[82%] sm:max-w-[65%] flex flex-col items-start">
+                    <div className="relative group max-w-[85%] sm:max-w-[70%] md:max-w-[560px] flex flex-col items-start">
                       <div
                         onDoubleClick={() => onReactMessage?.(m.messageId, "❤️")}
-                        className="msg-in w-fit min-w-[76px] p-3 rounded-2xl text-[14px] relative border shadow-xs"
-                        style={{
-                          background: "var(--surface)",
-                          borderColor: "var(--border)",
-                          borderBottomLeftRadius: "4px",
-                        }}
+                        className="w-fit min-w-[76px] bg-white px-3 py-2 rounded-xl rounded-tl-none shadow-2xs text-sm relative border border-[#e9edef] transition-all"
                       >
-                        <div
-                          className="text-[11px] font-bold mb-0.5 flex items-center gap-1.5"
-                          style={{ color: "var(--brand)" }}
-                        >
+                        <div className="text-[11px] font-bold text-[#00a884] mb-0.5 flex items-center gap-1.5">
                           <span>{m.senderName}</span>
-                          {m.isOwner && (
-                            <span
-                              className="px-1.5 py-0.2 rounded text-[9px] font-bold border"
-                              style={{
-                                background: "var(--gold-tint)",
-                                color: "var(--gold)",
-                                borderColor: "var(--gold-tint-border)",
-                              }}
-                            >
-                              Owner
+                          {m.isOwner ? (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#fef08a] text-[#854d0e] border border-[#facc15]">
+                              OWNER
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                              JOINER
                             </span>
                           )}
                         </div>
-                        <div
-                          className="break-words whitespace-pre-wrap leading-relaxed select-text"
-                          style={{ color: "var(--ink)" }}
-                        >
+                        <div className="break-words whitespace-pre-wrap text-[#111b21] leading-relaxed select-text text-sm">
                           {m.text}
                         </div>
-                        <div
-                          className="text-[10px] text-right mt-1 select-none"
-                          style={{ color: "var(--ink-faint)" }}
-                        >
+                        <div className="text-[10px] text-[#667781] text-right mt-1 select-none">
                           {timeStr}
                         </div>
 
-                        {/* Message Reactions */}
+                        {/* WhatsApp / Instagram reactions */}
                         <MessageReactions
                           messageId={m.messageId}
                           reactions={m.reactions}
@@ -1493,14 +1278,8 @@ export const ActiveSessionView = ({
 
               {/* Live typing status */}
               {typingUsers.length > 0 && (
-                <div
-                  className="text-xs font-medium italic flex items-center gap-1.5 py-1 px-1"
-                  style={{ color: "var(--brand)" }}
-                >
-                  <span
-                    className="inline-block w-1.5 h-1.5 rounded-full pulse-dot"
-                    style={{ background: "var(--brand)" }}
-                  />
+                <div className="text-xs text-[#00a884] font-medium italic flex items-center gap-1.5 py-1 px-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#00a884] animate-ping" />
                   <span>
                     {typingUsers.join(", ")}{" "}
                     {typingUsers.length === 1 ? "is" : "are"} typing...
@@ -1512,7 +1291,7 @@ export const ActiveSessionView = ({
             </div>
           </div>
 
-          {/* Floating 'New messages' indicator when scrolled up */}
+          {/* Floating 'New messages' indicator when user has scrolled up */}
           <AnimatePresence>
             {showNewMessagesBtn && (
               <motion.button
@@ -1521,8 +1300,7 @@ export const ActiveSessionView = ({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
                 onClick={() => scrollToBottom("smooth")}
-                className="absolute bottom-20 left-1/2 -translate-x-1/2 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg flex items-center gap-1.5 z-20 cursor-pointer transition-all active:scale-95"
-                style={{ background: "var(--brand)" }}
+                className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-[#00a884] hover:bg-[#008f6f] text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg flex items-center gap-1.5 z-20 cursor-pointer transition-all active:scale-95"
               >
                 <svg
                   className="w-3.5 h-3.5"
@@ -1540,13 +1318,10 @@ export const ActiveSessionView = ({
             )}
           </AnimatePresence>
 
-          {/* 4. BOTTOM CHAT INPUT BAR (Exact from test2.html) */}
+          {/* BOTTOM MESSAGE INPUT BAR (From test.html) */}
           <footer
             id="chat-input-bar"
-            className="px-3 sm:px-5 py-3 flex items-center gap-2 z-10 shrink-0 border-t bg-white"
-            style={{
-              borderColor: "var(--border)",
-            }}
+            className="h-16 bg-[#f0f2f5] px-3 sm:px-4 border-t border-[#e9edef] flex items-center gap-2 z-10 shrink-0"
           >
             {/* Hidden file input */}
             <input
@@ -1556,18 +1331,15 @@ export const ActiveSessionView = ({
               className="hidden"
             />
 
-            {/* Attach File Button (Exact from test2.html) */}
+            {/* Attachment Button from test.html */}
             <button
               type="button"
               onClick={handleTriggerFileSelect}
-              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors cursor-pointer shrink-0"
-              style={{ color: "var(--ink-soft)" }}
-              onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-              onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
-              title="Attach a file"
+              className="text-[#54656f] hover:text-[#111b21] p-2 rounded-lg hover:bg-white transition-colors cursor-pointer shrink-0"
+              title="Attach Document or Image (Ephemeral RAM)"
             >
               <svg
-                className="w-4.5 h-4.5"
+                className="w-5 h-5"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -1579,7 +1351,7 @@ export const ActiveSessionView = ({
               </svg>
             </button>
 
-            {/* Message Input Form (Exact from test2.html) */}
+            {/* The Real-Time Message Input Field with exact placeholder from original UI */}
             <form
               id="message-form"
               onSubmit={handleSend}
@@ -1591,37 +1363,21 @@ export const ActiveSessionView = ({
                 type="text"
                 value={inputText}
                 onChange={handleInputChange}
-                placeholder={`Message ${peerDisplayName}...`}
-                className="w-full rounded-lg px-4 py-2.5 text-[14px] outline-none transition-all border"
-                style={{
-                  background: "var(--surface-alt)",
-                  color: "var(--ink)",
-                  borderColor: "var(--border)",
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = "var(--brand)";
-                  e.target.style.background = "var(--surface)";
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = "var(--border)";
-                  e.target.style.background = "var(--surface-alt)";
-                }}
+                placeholder="Type real-time message... (Enter to send)"
+                className="w-full bg-white text-[#111b21] rounded-lg px-4 py-2.5 text-sm outline-none border border-[#e9edef] focus:border-[#00a884] placeholder:text-[#667781] transition-all shadow-2xs"
                 autoComplete="off"
                 maxLength={2000}
               />
 
-              {/* Voice Note Button (Exact from test2.html) */}
+              {/* Mic Voice Memo Button */}
               <button
                 type="button"
                 onClick={handleSendVoiceNote}
-                className="hidden sm:flex w-9 h-9 rounded-lg items-center justify-center transition-colors cursor-pointer shrink-0"
-                style={{ color: "var(--ink-soft)" }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
-                title="Send a voice note"
+                className="hidden sm:block text-[#54656f] hover:text-[#111b21] p-2 rounded-lg hover:bg-white transition-colors cursor-pointer shrink-0"
+                title="Send Voice Memo"
               >
                 <svg
-                  className="w-4.5 h-4.5"
+                  className="w-5 h-5"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -1636,23 +1392,20 @@ export const ActiveSessionView = ({
                 </svg>
               </button>
 
-              {/* Send Button (Exact from test2.html) */}
+              {/* SEND Button: Exact text 'SEND' + send arrow icon from original UI */}
               <button
                 id="send-btn"
                 type="submit"
                 disabled={!inputText.trim()}
-                className="flex items-center justify-center w-10 h-10 rounded-lg text-white transition-all cursor-pointer active:scale-95 shrink-0 disabled:opacity-40 shadow-xs"
-                style={{ background: "var(--brand)" }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "var(--brand-dark)")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "var(--brand)")}
-                title="Send"
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-[#00a884] hover:bg-[#008f6f] disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
               >
+                <span>SEND</span>
                 <svg
-                  className="w-4.5 h-4.5"
+                  className="w-3.5 h-3.5"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2.3"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
@@ -1665,32 +1418,24 @@ export const ActiveSessionView = ({
         </main>
       </div>
 
-      {/* 5. TOAST NOTIFICATION (Exact styling from test2.html) */}
+      {/* 4. TOAST NOTIFICATION (From test.html) */}
       <div
         id="toast"
-        className={`fixed bottom-20 left-1/2 -translate-x-1/2 text-[13px] px-4 py-2.5 rounded-lg shadow-lg transition-opacity duration-300 z-50 flex items-center gap-2 pointer-events-none ${
+        className={`fixed bottom-20 left-1/2 -translate-x-1/2 bg-[#111b21] text-white text-xs px-4 py-2 rounded-lg shadow-xl transition-opacity duration-300 z-50 flex items-center gap-2 pointer-events-none ${
           showToast ? "opacity-100" : "opacity-0"
         }`}
-        style={{
-          background: "var(--ink)",
-          color: "#ffffff",
-        }}
       >
         <svg
-          className="w-4 h-4 shrink-0"
+          className="w-4 h-4 text-[#00a884]"
           viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--success)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          fill="currentColor"
         >
-          <polyline points="20 6 9 17 4 12" />
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
         </svg>
         <span id="toast-text">{toastText}</span>
       </div>
 
-      {/* 6. ADD DEVICE RESPONSIVE MODAL */}
+      {/* 5. ADD DEVICE RESPONSIVE MODAL */}
       <AddDeviceModal
         isOpen={showAddDeviceModal}
         onClose={() => setShowAddDeviceModal(false)}
@@ -1700,51 +1445,31 @@ export const ActiveSessionView = ({
         onShowToast={triggerToast}
       />
 
-      {/* 7. TERMINATE CONFIRMATION MODAL */}
+      {/* 6. TERMINATE CONFIRMATION MODAL */}
       {showEndConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-white rounded-2xl border p-6 shadow-2xl font-sans"
-            style={{ borderColor: "var(--border)" }}
+            className="w-full max-w-md bg-white rounded-2xl border border-[#e9edef] p-6 shadow-2xl font-sans"
           >
-            <div
-              className="flex items-center gap-3 mb-4 pb-3 border-b"
-              style={{ borderColor: "var(--border)" }}
-            >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: "var(--danger-tint)",
-                  color: "var(--danger)",
-                }}
-              >
-                <AlertTriangle className="w-5 h-5" />
+            <div className="flex items-center gap-3 text-rose-600 mb-4 pb-3 border-b border-[#e9edef]">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
               </div>
-              <h3
-                className="text-base font-bold"
-                style={{ color: "var(--ink)" }}
-              >
-                End session?
+              <h3 className="text-base font-bold text-[#111b21]">
+                Terminate Ephemeral Line?
               </h3>
             </div>
-            <p
-              className="text-sm leading-relaxed mb-6"
-              style={{ color: "var(--ink-soft)" }}
-            >
-              Every message and attachment in this session lives only in memory. Ending this session will immediately disconnect all {sessionData.participants.length} participants and clear all memory buffers permanently.
+            <p className="text-sm text-[#54656f] leading-relaxed mb-6">
+              This will immediately disconnect all {sessionData.participants.length}{" "}
+              participants and hard-wipe all ephemeral RAM buffers. No messages
+              or logs can be recovered.
             </p>
             <div className="flex items-center justify-end gap-2.5">
               <button
                 onClick={() => setShowEndConfirm(false)}
-                className="px-4 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer"
-                style={{
-                  borderColor: "var(--border)",
-                  color: "var(--ink)",
-                }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+                className="px-4 py-2 rounded-xl bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] text-xs font-semibold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1753,78 +1478,46 @@ export const ActiveSessionView = ({
                   setShowEndConfirm(false);
                   onEndSession();
                 }}
-                className="px-4 py-2 rounded-lg text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs"
-                style={{ background: "var(--danger)" }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "#a8342e")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "var(--danger)")}
+                className="px-4 py-2 rounded-xl bg-[#ea0038] hover:bg-[#c90030] text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-2xs"
               >
-                End session
+                End & Hard-Wipe
               </button>
             </div>
           </motion.div>
         </div>
       )}
 
-      {/* 8. KICK PARTICIPANT MODAL */}
+      {/* 7. KICK PARTICIPANT MODAL */}
       {kickTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-white rounded-2xl border p-6 shadow-2xl font-sans"
-            style={{ borderColor: "var(--border)" }}
+            className="w-full max-w-md bg-white rounded-2xl border border-[#e9edef] p-6 shadow-2xl font-sans"
           >
-            <div
-              className="flex items-center gap-3 mb-4 pb-3 border-b"
-              style={{ borderColor: "var(--border)" }}
-            >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: "var(--danger-tint)",
-                  color: "var(--danger)",
-                }}
-              >
-                <UserX className="w-5 h-5" />
+            <div className="flex items-center gap-3 text-amber-600 mb-4 pb-3 border-b border-[#e9edef]">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+                <UserX className="w-5 h-5 text-amber-600" />
               </div>
-              <h3
-                className="text-base font-bold"
-                style={{ color: "var(--ink)" }}
-              >
+              <h3 className="text-base font-bold text-[#111b21]">
                 Kick & Bar Participant?
               </h3>
             </div>
-            <p
-              className="text-sm leading-relaxed mb-3"
-              style={{ color: "var(--ink-soft)" }}
-            >
+            <p className="text-sm text-[#54656f] leading-relaxed mb-3">
               Are you sure you want to remove{" "}
-              <strong style={{ color: "var(--ink)" }}>
+              <strong className="text-[#111b21] font-bold">
                 {kickTarget.username}
               </strong>
               ?
             </p>
-            <div
-              className="text-xs leading-relaxed mb-6 p-3 rounded-xl border"
-              style={{
-                background: "var(--gold-tint)",
-                color: "var(--gold)",
-                borderColor: "var(--gold-tint-border)",
-              }}
-            >
+            <div className="text-xs text-[#854d0e] leading-relaxed mb-6 p-3 bg-[#fef9c3] rounded-xl border border-[#fde047]">
               Kicked participants are permanently barred from rejoining this active
               session even if they possess the invite link and passkey.
             </div>
             <div className="flex items-center justify-end gap-2.5">
               <button
                 onClick={() => setKickTarget(null)}
-                className="px-4 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer"
-                style={{
-                  borderColor: "var(--border)",
-                  color: "var(--ink)",
-                }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+                className="px-4 py-2 rounded-xl bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] text-xs font-semibold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1834,10 +1527,7 @@ export const ActiveSessionView = ({
                   setKickTarget(null);
                   onKickParticipant(targetId);
                 }}
-                className="px-4 py-2 rounded-lg text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs"
-                style={{ background: "var(--danger)" }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "#a8342e")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "var(--danger)")}
+                className="px-4 py-2 rounded-xl bg-[#ea0038] hover:bg-[#c90030] text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-2xs"
               >
                 Kick & Ban
               </button>
@@ -1846,65 +1536,36 @@ export const ActiveSessionView = ({
         </div>
       )}
 
-      {/* 9. TRANSFER OWNERSHIP CONFIRMATION MODAL */}
+      {/* 8. TRANSFER OWNERSHIP CONFIRMATION MODAL (From Sidebar) */}
       {transferTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-white rounded-2xl border p-6 shadow-2xl font-sans"
-            style={{ borderColor: "var(--border)" }}
+            className="w-full max-w-md bg-white rounded-2xl border border-[#e9edef] p-6 shadow-2xl font-sans"
           >
-            <div
-              className="flex items-center gap-3 mb-4 pb-3 border-b"
-              style={{ borderColor: "var(--border)" }}
-            >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: "var(--gold-tint)",
-                  color: "var(--gold)",
-                }}
-              >
-                <Crown className="w-5 h-5" />
+            <div className="flex items-center gap-3 text-amber-600 mb-4 pb-3 border-b border-[#e9edef]">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+                <Crown className="w-5 h-5 text-amber-600" />
               </div>
-              <h3
-                className="text-base font-bold"
-                style={{ color: "var(--ink)" }}
-              >
+              <h3 className="text-base font-bold text-[#111b21]">
                 Transfer Session Ownership?
               </h3>
             </div>
-            <p
-              className="text-sm leading-relaxed mb-3"
-              style={{ color: "var(--ink-soft)" }}
-            >
+            <p className="text-sm text-[#54656f] leading-relaxed mb-3">
               Transfer full ownership of this session to{" "}
-              <strong style={{ color: "var(--ink)" }}>
+              <strong className="text-[#111b21] font-bold">
                 {transferTarget.username}
               </strong>
               ?
             </p>
-            <div
-              className="text-xs leading-relaxed mb-6 p-3 rounded-xl border"
-              style={{
-                background: "var(--gold-tint)",
-                color: "var(--gold)",
-                borderColor: "var(--gold-tint-border)",
-              }}
-            >
-              The new owner will gain complete administrative control (call controls, kicking participants, and ending the session). You will remain in the session as an active participant.
+            <div className="text-xs text-[#854d0e] leading-relaxed mb-6 p-3 bg-[#fef9c3] rounded-xl border border-[#fde047]">
+              The new owner will gain complete administrative control (call controls, kicking participants, and ending the session). You will remain in the session as an active participant and can leave freely without terminating the session.
             </div>
             <div className="flex items-center justify-end gap-2.5">
               <button
                 onClick={() => setTransferTarget(null)}
-                className="px-4 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer"
-                style={{
-                  borderColor: "var(--border)",
-                  color: "var(--ink)",
-                }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+                className="px-4 py-2 rounded-xl bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] text-xs font-semibold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1921,10 +1582,7 @@ export const ActiveSessionView = ({
                     });
                   }
                 }}
-                className="px-4 py-2 rounded-lg text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
-                style={{ background: "var(--brand)" }}
-                onMouseOver={(e) => (e.currentTarget.style.background = "var(--brand-dark)")}
-                onMouseOut={(e) => (e.currentTarget.style.background = "var(--brand)")}
+                className="px-4 py-2 rounded-xl bg-[#f59e0b] hover:bg-[#d97706] text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-2xs flex items-center gap-1.5"
               >
                 <Crown className="w-3.5 h-3.5" />
                 <span>Confirm Transfer</span>
@@ -1934,64 +1592,41 @@ export const ActiveSessionView = ({
         </div>
       )}
 
-      {/* 10. OWNER LEAVE IN MID (Transfer Ownership & Leave) MODAL */}
+      {/* 9. OWNER LEAVE IN MID (Transfer Ownership & Leave) MODAL */}
       {showOwnerLeaveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-white rounded-2xl border p-6 shadow-2xl font-sans"
-            style={{ borderColor: "var(--border)" }}
+            className="w-full max-w-md bg-white rounded-2xl border border-[#e9edef] p-6 shadow-2xl font-sans"
           >
-            <div
-              className="flex items-center gap-3 mb-4 pb-3 border-b"
-              style={{ borderColor: "var(--border)" }}
-            >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: "var(--brand-tint)",
-                  color: "var(--brand)",
-                }}
-              >
-                <Crown className="w-5 h-5" />
+            <div className="flex items-center gap-3 text-[#00a884] mb-4 pb-3 border-b border-[#e9edef]">
+              <div className="w-10 h-10 rounded-xl bg-[#e7f7f3] flex items-center justify-center shrink-0">
+                <Crown className="w-5 h-5 text-[#00a884]" />
               </div>
               <div>
-                <h3
-                  className="text-base font-bold"
-                  style={{ color: "var(--ink)" }}
-                >
+                <h3 className="text-base font-bold text-[#111b21]">
                   Leave Session as Owner
                 </h3>
-                <p className="text-xs" style={{ color: "var(--ink-faint)" }}>
+                <p className="text-xs text-[#667781]">
                   Transfer ownership so the meet continues running
                 </p>
               </div>
             </div>
 
-            <p
-              className="text-sm leading-relaxed mb-4"
-              style={{ color: "var(--ink-soft)" }}
-            >
+            <p className="text-sm text-[#54656f] leading-relaxed mb-4">
               To leave the meet without terminating the session for other participants, select a joiner to take over as the new session owner:
             </p>
 
+            {/* Joiners selection dropdown */}
             <div className="mb-4">
-              <label
-                className="block text-xs font-bold uppercase tracking-wider mb-1.5"
-                style={{ color: "var(--ink-soft)" }}
-              >
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#54656f] mb-1.5">
                 Select New Owner
               </label>
               <select
                 value={selectedNewOwnerId}
                 onChange={(e) => setSelectedNewOwnerId(e.target.value)}
-                className="w-full border rounded-xl px-3.5 py-2.5 text-sm font-medium focus:outline-none cursor-pointer"
-                style={{
-                  background: "var(--surface-alt)",
-                  borderColor: "var(--border)",
-                  color: "var(--ink)",
-                }}
+                className="w-full bg-[#f0f2f5] border border-[#e9edef] text-[#111b21] rounded-xl px-3.5 py-2.5 text-sm font-medium focus:outline-none focus:border-[#00a884] cursor-pointer"
               >
                 {sessionData.participants
                   .filter((p) => p.participantId !== sessionData.participantId)
@@ -2003,14 +1638,7 @@ export const ActiveSessionView = ({
               </select>
             </div>
 
-            <div
-              className="p-3 rounded-xl border text-xs mb-6 leading-relaxed"
-              style={{
-                background: "var(--brand-tint)",
-                borderColor: "var(--brand-tint-border)",
-                color: "var(--brand)",
-              }}
-            >
+            <div className="p-3 bg-[#e7f7f3] rounded-xl border border-[#00a884]/30 text-xs text-[#008069] mb-6 leading-relaxed">
               The selected participant will become the new session owner. The session will remain active and uninterrupted after you leave.
             </div>
 
@@ -2020,8 +1648,7 @@ export const ActiveSessionView = ({
                   setShowOwnerLeaveModal(false);
                   setShowEndConfirm(true);
                 }}
-                className="text-xs font-semibold underline cursor-pointer"
-                style={{ color: "var(--danger)" }}
+                className="text-xs text-rose-600 hover:text-rose-700 font-semibold underline cursor-pointer"
               >
                 End for everyone
               </button>
@@ -2029,13 +1656,7 @@ export const ActiveSessionView = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowOwnerLeaveModal(false)}
-                  className="px-4 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer"
-                  style={{
-                    borderColor: "var(--border)",
-                    color: "var(--ink)",
-                  }}
-                  onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface-alt)")}
-                  onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+                  className="px-4 py-2 rounded-xl bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -2048,10 +1669,7 @@ export const ActiveSessionView = ({
                     }
                   }}
                   disabled={!selectedNewOwnerId}
-                  className="px-4 py-2 rounded-lg text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs flex items-center gap-1.5 disabled:opacity-50"
-                  style={{ background: "var(--brand)" }}
-                  onMouseOver={(e) => (e.currentTarget.style.background = "var(--brand-dark)")}
-                  onMouseOut={(e) => (e.currentTarget.style.background = "var(--brand)")}
+                  className="px-4 py-2 rounded-xl bg-[#00a884] hover:bg-[#008f6f] disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-2xs flex items-center gap-1.5"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Transfer & Leave</span>
@@ -2064,8 +1682,3 @@ export const ActiveSessionView = ({
     </div>
   );
 };
-
-// merge
-
-
-// merging to main to undo changes

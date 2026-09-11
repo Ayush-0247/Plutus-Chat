@@ -1,26 +1,5 @@
 @import "tailwindcss";
 
-:root {
-  --bg: #f4f5f9;
-  --surface: #ffffff;
-  --surface-alt: #eef0f6;
-  --border: #e2e4ee;
-  --ink: #171a25;
-  --ink-soft: #565b6c;
-  --ink-faint: #8a8fa0;
-  --brand: #3d3a8c;
-  --brand-dark: #2c2a68;
-  --brand-tint: #eeedfb;
-  --brand-tint-border: #d9d6f5;
-  --gold: #a9781f;
-  --gold-tint: #fbf1de;
-  --gold-tint-border: #eeddb0;
-  --success: #1e9e6f;
-  --success-tint: #e4f6ee;
-  --danger: #c8433c;
-  --danger-tint: #fbeae9;
-}
-
 @layer base {
   html,
   body,
@@ -33,54 +12,11 @@
   }
 
   body {
-    font-family: 'Manrope', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: #f4f5f9;
-    color: #171a25;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #f0f2f5;
+    color: #111b21;
     -webkit-font-smoothing: antialiased;
   }
-}
-
-.font-mono {
-  font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
-}
-
-/* Chat canvas with subtle indigo radial dot pattern from test2.html */
-.chat-canvas {
-  background-color: var(--bg);
-  background-image: radial-gradient(
-    rgba(61, 58, 140, 0.055) 1px,
-    transparent 1px
-  );
-  background-size: 24px 24px;
-}
-
-@keyframes soft-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
-  }
-}
-
-.pulse-dot {
-  animation: soft-pulse 2.2s ease-in-out infinite;
-}
-
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.msg-in {
-  animation: rise-in 0.22s ease-out;
 }
 
 /* Custom scrollbars for Geometric Balance theme */
