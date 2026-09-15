@@ -38,7 +38,7 @@ export const VideoTile = ({
   const initial = (username || '?').charAt(0).toUpperCase();
 
   return (
-    <div className="relative w-full h-full min-h-[140px] sm:min-h-[170px] bg-[#1a232a] rounded-xl border border-[#2a3942] flex items-center justify-center overflow-hidden font-sans shadow-2xs">
+    <div className="relative w-full h-full min-h-53 sm:min-h-42.5 bg-[#1a232a] rounded-xl border border-[#2a3942] flex items-center justify-center overflow-hidden font-sans shadow-2xs">
       {/* Video Element */}
       <video
         ref={videoRef}
