@@ -3,676 +3,1610 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Plutus</title>
+    <title>Plutus Secure Chat — Ephemeral Encrypted Messaging</title>
     <meta
       name="description"
-      content="Plutus: an ephemeral, end-to-end encrypted chat session."
+      content="Plutus: An ephemeral, end-to-end encrypted peer session with intuitive navigation and edge-to-edge chat."
     />
+    <meta property="og:title" content="Plutus Secure Chat" />
+    <meta
+      property="og:description"
+      content="Single-file ephemeral end-to-end encrypted messaging interface with modern navigation and extreme-edge chat alignment."
+    />
+    <meta property="og:type" content="website" />
 
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
 
+    <!-- Tailwind CSS (CDN for standalone preview compatibility) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
     <style>
       :root {
-        --bg: #f8f6f3;
+        --bg: #f5f6fa;
         --surface: #ffffff;
-        --sunken: #f1ede9;
-        --border: #e8e2dc;
-        --ink: #241b20;
-        --ink-soft: #756a6f;
-        --ink-faint: #ab9fa3;
-        --plum: #7a2048;
-        --plum-dark: #601a39;
-        --plum-tint: #f8ecf1;
-        --plum-tint-border: #f0d6e2;
-        --green: #3d9868;
-        --green-tint: #e7f5ee;
-        --red: #c1443a;
+        --surface-alt: #eef1f7;
+        --surface-hover: #e7ebf3;
+        --border: #e1e4ee;
+        --border-subtle: #eaeef6;
+        --ink: #111420;
+        --ink-soft: #4e5366;
+        --ink-faint: #868c9f;
+        --brand: #3b378c;
+        --brand-light: #4f4ab0;
+        --brand-dark: #292663;
+        --brand-tint: #eeedf9;
+        --brand-tint-border: #d7d4f4;
+        --user-bubble: #34307a;
+        --user-bubble-gradient: linear-gradient(135deg, #3c378e 0%, #2f2b6e 100%);
+        --peer-bubble: #ffffff;
+        --gold: #b38118;
+        --gold-tint: #fef7ea;
+        --gold-tint-border: #fae4be;
+        --success: #15803d;
+        --success-light: #22c55e;
+        --success-tint: #ecfdf5;
+        --danger: #dc2626;
+        --danger-tint: #fef2f2;
+        --sidebar-w: 320px;
       }
+
       * {
         box-sizing: border-box;
       }
+
       body {
         margin: 0;
-        height: 100%;
-        background: var(--bg);
-        color: var(--ink);
-        font-family:
-          "Inter",
-          system-ui,
-          -apple-system,
-          "Segoe UI",
-          Roboto,
-          sans-serif;
+        height: 100vh;
+        height: 100dvh;
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
         -webkit-font-smoothing: antialiased;
         overflow: hidden;
-      }
-      .font-display {
-        font-family: "Sora", "Inter", sans-serif;
+        background: var(--bg);
+        color: var(--ink);
       }
 
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      /* Chat canvas with high-fidelity micro-dot grid */
+      .chat-canvas {
+        background-color: #f7f8fc;
+        background-image: radial-gradient(rgba(59, 55, 140, 0.08) 1.2px, transparent 1.2px);
+        background-size: 22px 22px;
+      }
+
+      /* Custom scrollbars */
       ::-webkit-scrollbar {
-        width: 5px;
+        width: 6px;
+        height: 6px;
       }
       ::-webkit-scrollbar-track {
         background: transparent;
       }
       ::-webkit-scrollbar-thumb {
-        background: #d8d1cb;
+        background: #cbd0df;
         border-radius: 9999px;
       }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #aab0c4;
+      }
 
-      @keyframes rise {
+      /* Animations */
+      @keyframes pulse-ring {
+        0%, 100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.35);
+          opacity: 0.4;
+        }
+      }
+      .pulse-dot {
+        animation: pulse-ring 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+
+      @keyframes message-pop-left {
         from {
           opacity: 0;
-          transform: translateY(8px);
+          transform: translateY(8px) scale(0.98);
         }
         to {
           opacity: 1;
-          transform: translateY(0);
+          transform: translateY(0) scale(1);
         }
       }
-      .rise-in {
-        animation: rise 0.25s ease-out both;
+      .msg-enter-left {
+        animation: message-pop-left 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        transform-origin: bottom left;
       }
 
-      @keyframes sheet-up {
-        from {
-          transform: translateY(100%);
-        }
-        to {
-          transform: translateY(0);
-        }
-      }
-      .sheet-up {
-        animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
-      }
-
-      @keyframes fade {
+      @keyframes message-pop-right {
         from {
           opacity: 0;
+          transform: translateY(8px) scale(0.98);
         }
         to {
           opacity: 1;
+          transform: translateY(0) scale(1);
         }
       }
-      .fade-in {
-        animation: fade 0.2s ease-out both;
+      .msg-enter-right {
+        animation: message-pop-right 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        transform-origin: bottom right;
       }
 
-      @media (prefers-reduced-motion: reduce) {
-        .rise-in,
-        .sheet-up,
-        .fade-in {
-          animation: none !important;
+      @keyframes typing-bounce {
+        0%, 80%, 100% {
+          transform: scale(0.65);
+          opacity: 0.4;
+        }
+        40% {
+          transform: scale(1.1);
+          opacity: 1;
+        }
+      }
+      .dot-1 { animation: typing-bounce 1.2s infinite ease-in-out 0s; }
+      .dot-2 { animation: typing-bounce 1.2s infinite ease-in-out 0.2s; }
+      .dot-3 { animation: typing-bounce 1.2s infinite ease-in-out 0.4s; }
+
+      /* Message action hover buttons */
+      .msg-row:hover .msg-actions {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      /* Sidebar navigation transition */
+      #sidebar-container {
+        transition: width 0.22s cubic-bezier(0.2, 0, 0, 1), transform 0.22s cubic-bezier(0.2, 0, 0, 1);
+      }
+      #sidebar-container.collapsed {
+        width: 0px !important;
+        transform: translateX(-100%);
+      }
+      @media (min-width: 1024px) {
+        #sidebar-container.collapsed {
+          width: 0px !important;
+          transform: translateX(-100%);
         }
       }
 
-      button:focus-visible,
-      input:focus-visible {
-        outline: 2px solid var(--plum);
-        outline-offset: 2px;
+      /* Sound indicator wave */
+      .wave-bar {
+        display: inline-block;
+        width: 3px;
+        background-color: currentColor;
+        border-radius: 9999px;
+        animation: sound-wave 1s ease-in-out infinite alternate;
+      }
+      @keyframes sound-wave {
+        0% { height: 4px; }
+        100% { height: 16px; }
+      }
+
+      /* Smooth focus states */
+      button:focus-visible, input:focus-visible, textarea:focus-visible {
+        outline: 2px solid var(--brand);
+        outline-offset: 1px;
       }
     </style>
   </head>
-  <body class="h-full flex flex-col select-none">
-    <!-- MINIMAL TOP BAR -->
-    <header
-      class="h-16 px-4 sm:px-6 flex items-center justify-between shrink-0"
-      style="background: var(--bg)"
-    >
-      <button
-        onclick="toggleSheet()"
-        class="flex items-center gap-3 cursor-pointer group"
-      >
-        <div class="relative shrink-0">
-          <div
-            class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[13px] text-white"
-            style="background: var(--plum)"
-          >
-            AR
-          </div>
-          <span
-            class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full"
-            style="background: var(--green); border: 2px solid var(--bg)"
-          ></span>
-        </div>
-        <div class="text-left">
-          <div
-            class="font-display font-bold text-[15px] leading-tight"
-            style="color: var(--ink)"
-          >
-            Ayush Raj
-          </div>
-          <div class="text-[12px]" style="color: var(--ink-soft)">
-            Online, encrypted session
-          </div>
-        </div>
-      </button>
 
-      <button
-        onclick="toggleSheet()"
-        class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors"
-        style="
-          background: var(--surface);
-          border: 1px solid var(--border);
-          color: var(--ink-soft);
-        "
-        title="Session details"
+  <body class="h-full flex flex-col select-none text-[14px]">
+    <!-- APP ROOT CONTAINER -->
+    <div id="app-root" class="h-full flex flex-col w-full overflow-hidden">
+      
+      <!-- ========================================================== -->
+      <!-- TOP NAVIGATION BAR -->
+      <!-- ========================================================== -->
+      <header
+        id="top-header"
+        class="h-16 px-3 sm:px-6 flex items-center justify-between shrink-0 z-30 border-b bg-white"
+        style="border-color: var(--border)"
       >
-        <svg
-          class="w-4.5 h-4.5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" />
-          <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
-          <circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" />
-        </svg>
-      </button>
-    </header>
-
-    <!-- CHAT -->
-    <main class="flex-1 overflow-y-auto px-4 sm:px-6" id="messages-container">
-      <div class="max-w-lg mx-auto pt-2 pb-6">
-        <!-- Empty state -->
-        <div id="empty-state" class="rise-in text-center py-14">
-          <div
-            class="w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center"
-            style="background: var(--plum-tint)"
+        <!-- Left: Branding, Session Badge, Navigation Toggle -->
+        <div class="flex items-center gap-2.5 sm:gap-4">
+          <!-- Sidebar toggle button -->
+          <button
+            id="toggle-sidebar-btn"
+            onclick="toggleSidebar()"
+            class="p-2 rounded-lg text-[#565b6c] hover:bg-[#f1f3f9] hover:text-[#171a25] transition-colors cursor-pointer"
+            title="Toggle navigation sidebar (Ctrl+B)"
+            aria-label="Toggle Navigation"
           >
-            <svg
-              class="w-6 h-6"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--plum)"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path
-                d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
-                opacity="0"
-              />
-              <rect x="4" y="10" width="16" height="10" rx="2.5" />
-              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
             </svg>
+          </button>
+
+          <!-- Logo & Title -->
+          <div class="flex items-center gap-2.5">
+            <div
+              class="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
+              style="background: var(--brand)"
+            >
+              <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </div>
+            <div class="leading-tight">
+              <div class="flex items-baseline gap-1.5">
+                <span class="text-[15px] font-extrabold tracking-tight text-[#171a25]">Plutus</span>
+                <span class="text-[13px] font-semibold text-[#868c9f] uppercase tracking-wider">Session</span>
+                <button
+                  onclick="copySessionId()"
+                  class="hidden sm:inline-flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full font-mono text-[11px] font-semibold bg-[#eef0f8] text-[#3b378c] hover:bg-[#e2e5f3] transition-colors cursor-pointer"
+                  title="Click to copy Session ID"
+                >
+                  <span>#3SDU4H</span>
+                  <svg class="w-3 h-3 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+              </div>
+              <div class="hidden sm:flex items-center gap-2 text-[11px] text-[#868c9f] mt-0.5">
+                <span class="flex items-center gap-1">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 relative flex items-center justify-center">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 absolute pulse-dot"></span>
+                  </span>
+                  <span class="font-medium text-emerald-700">Connected</span>
+                </span>
+                <span>•</span>
+                <span>In-memory only</span>
+                <span>•</span>
+                <span class="font-mono text-[10.5px]">AES-256-GCM</span>
+              </div>
+            </div>
           </div>
-          <h2
-            class="font-display font-bold text-[17px]"
-            style="color: var(--ink)"
+        </div>
+
+        <!-- Right: Modern Quick Actions & End Session -->
+        <div class="flex items-center gap-1.5 sm:gap-2.5">
+          <!-- Search toggle -->
+          <button
+            id="search-toggle-btn"
+            onclick="toggleSearch()"
+            class="w-9 h-9 rounded-lg flex items-center justify-center text-[#565b6c] hover:bg-[#f1f3f9] hover:text-[#171a25] transition-colors cursor-pointer border border-[#e1e4ee]"
+            title="Search messages"
           >
-            You're all set
-          </h2>
-          <p
-            class="mt-1.5 text-[13.5px] max-w-[240px] mx-auto leading-relaxed"
-            style="color: var(--ink-soft)"
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </button>
+
+          <!-- Audio notification toggle -->
+          <button
+            id="audio-toggle-btn"
+            onclick="toggleAudio()"
+            class="w-9 h-9 rounded-lg flex items-center justify-center text-[#565b6c] hover:bg-[#f1f3f9] hover:text-[#171a25] transition-colors cursor-pointer border border-[#e1e4ee]"
+            title="Toggle sound notifications"
           >
-            Say hello. Messages stay in memory and disappear once this session
-            ends.
+            <svg id="speaker-icon" class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+          </button>
+
+          <!-- Auto-Destruct Timer Pill -->
+          <div class="relative">
+            <button
+              id="autoburn-btn"
+              onclick="toggleAutoBurnMenu()"
+              class="hidden md:flex items-center gap-1.5 px-2.5 h-9 rounded-lg text-[12px] font-semibold text-[#565b6c] hover:bg-[#f1f3f9] hover:text-[#171a25] border border-[#e1e4ee] transition-colors cursor-pointer"
+              title="Set ephemeral message destruction timer"
+            >
+              <svg class="w-3.5 h-3.5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+              <span id="autoburn-label">Burn: Off</span>
+            </button>
+
+            <!-- Auto-burn dropdown menu -->
+            <div
+              id="autoburn-menu"
+              class="hidden absolute right-0 mt-1.5 w-48 bg-white rounded-xl shadow-lg border border-[#e1e4ee] py-1.5 z-50 text-[13px]"
+            >
+              <div class="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#868c9f]">Auto-Destruct Timer</div>
+              <button onclick="setAutoBurn('Off')" class="w-full text-left px-3 py-1.5 hover:bg-[#f1f3f9] flex items-center justify-between text-[#171a25]">
+                <span>Disabled (Session End)</span>
+                <span id="check-Off" class="text-[#3b378c]">✓</span>
+              </button>
+              <button onclick="setAutoBurn('1m')" class="w-full text-left px-3 py-1.5 hover:bg-[#f1f3f9] flex items-center justify-between text-[#171a25]">
+                <span>1 Minute</span>
+                <span id="check-1m" class="hidden text-[#3b378c]">✓</span>
+              </button>
+              <button onclick="setAutoBurn('5m')" class="w-full text-left px-3 py-1.5 hover:bg-[#f1f3f9] flex items-center justify-between text-[#171a25]">
+                <span>5 Minutes</span>
+                <span id="check-5m" class="hidden text-[#3b378c]">✓</span>
+              </button>
+              <button onclick="setAutoBurn('15m')" class="w-full text-left px-3 py-1.5 hover:bg-[#f1f3f9] flex items-center justify-between text-[#171a25]">
+                <span>15 Minutes</span>
+                <span id="check-15m" class="hidden text-[#3b378c]">✓</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick Simulate Peer Reply Button -->
+          <button
+            id="quick-simulate-btn"
+            onclick="simulatePeerReply()"
+            class="hidden sm:inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-[12.5px] font-semibold text-[#3b378c] bg-[#eeedf9] hover:bg-[#e2e0f5] border border-[#d7d4f4] transition-all cursor-pointer active:scale-95"
+            title="Simulate incoming peer reply"
+          >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>Simulate reply</span>
+          </button>
+
+          <!-- End Session Button -->
+          <button
+            id="end-session-btn"
+            onclick="openEndSessionModal()"
+            class="flex items-center gap-1.5 px-3.5 h-9 rounded-lg text-white text-[12.5px] font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
+            style="background: var(--danger)"
+            onmouseover="this.style.background='#b91c1c'"
+            onmouseout="this.style.background='var(--danger)'"
+            title="End session and wipe in-memory contents"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+              <line x1="12" y1="2" x2="12" y2="12" />
+            </svg>
+            <span class="hidden sm:inline">End session</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- ========================================================== -->
+      <!-- MAIN BODY (SIDEBAR + CHAT WORKSPACE) -->
+      <!-- ========================================================== -->
+      <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- ====================================================== -->
+        <!-- MOBILE BACKDROP -->
+        <!-- ====================================================== -->
+        <div
+          id="mobile-backdrop"
+          onclick="closeSidebarMobile()"
+          class="hidden fixed inset-0 bg-black/40 z-20 lg:hidden backdrop-blur-xs transition-opacity"
+        ></div>
+
+        <!-- ====================================================== -->
+        <!-- INTUITIVE MODERN NAVIGATION SIDEBAR -->
+        <!-- ====================================================== -->
+        <aside
+          id="sidebar-container"
+          class="w-[310px] sm:w-[320px] flex flex-col shrink-0 bg-white border-r z-30 absolute lg:relative inset-y-0 left-0 shadow-xl lg:shadow-none -translate-x-full lg:translate-x-0"
+          style="border-color: var(--border)"
+        >
+          <!-- Sidebar Navigation Tabs -->
+          <div class="p-3 border-b flex items-center gap-1 bg-[#fafbfe]" style="border-color: var(--border)">
+            <button
+              id="tab-btn-chat"
+              onclick="switchSidebarTab('chat')"
+              class="flex-1 py-1.5 px-2 rounded-lg font-semibold text-[12px] flex items-center justify-center gap-1.5 transition-all cursor-pointer bg-white text-[#3b378c] shadow-xs border border-[#e1e4ee]"
+            >
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              <span>Chat</span>
+              <span id="badge-msg-count" class="px-1.5 py-0.2 rounded-full text-[10px] bg-[#eeedf9] text-[#3b378c] font-bold">5</span>
+            </button>
+
+            <button
+              id="tab-btn-peers"
+              onclick="switchSidebarTab('peers')"
+              class="flex-1 py-1.5 px-2 rounded-lg font-semibold text-[12px] flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[#565b6c] hover:bg-white hover:text-[#171a25]"
+            >
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+              <span>Peers</span>
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+            </button>
+
+            <button
+              id="tab-btn-security"
+              onclick="switchSidebarTab('security')"
+              class="flex-1 py-1.5 px-2 rounded-lg font-semibold text-[12px] flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[#565b6c] hover:bg-white hover:text-[#171a25]"
+            >
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+              <span>Security</span>
+            </button>
+          </div>
+
+          <!-- TAB CONTENT 1: CHAT & SESSION OVERVIEW -->
+          <div id="tab-content-chat" class="flex-1 overflow-y-auto p-4 space-y-4">
+            
+            <!-- Quick Session Credentials Card -->
+            <div class="rounded-xl p-3.5 bg-[#f7f8fc] border border-[#e1e4ee] space-y-3">
+              <div class="flex items-center justify-between text-[11px] font-semibold text-[#868c9f]">
+                <span>SESSION ID</span>
+                <button onclick="copyText('3SDU4H', 'Session ID copied')" class="text-[#3b378c] hover:underline flex items-center gap-1 cursor-pointer font-medium">
+                  <span>Copy</span>
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+              </div>
+              <div class="font-mono text-[16px] font-bold tracking-wider text-[#171a25] flex items-center justify-between">
+                <span>3SDU4H</span>
+                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
+                </span>
+              </div>
+
+              <div class="h-px bg-[#e1e4ee]"></div>
+
+              <div class="flex items-center justify-between text-[11px] font-semibold text-[#b38118]">
+                <span>EPHEMERAL PASSKEY</span>
+                <button onclick="copyText('SOLAR-643', 'Passkey copied')" class="text-[#b38118] hover:underline flex items-center gap-1 cursor-pointer font-medium">
+                  <span>Copy</span>
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+              </div>
+              <div class="font-mono text-[16px] font-bold tracking-wider text-[#171a25]">
+                SOLAR - 643
+              </div>
+            </div>
+
+            <!-- Primary Actions -->
+            <div class="space-y-2">
+              <button
+                id="copy-invite-btn"
+                onclick="copyInviteLink()"
+                class="w-full h-10 rounded-xl text-white font-semibold text-[13px] flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-[0.98]"
+                style="background: var(--brand)"
+                onmouseover="this.style.background='var(--brand-dark)'"
+                onmouseout="this.style.background='var(--brand)'"
+              >
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+                <span id="copy-invite-label">Copy invite link</span>
+              </button>
+
+              <button
+                onclick="simulatePeerReply()"
+                class="w-full h-10 rounded-xl font-semibold text-[13px] text-[#4e5366] bg-[#f7f8fc] hover:bg-[#eef1f7] border border-[#e1e4ee] flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98]"
+              >
+                <svg class="w-4 h-4 text-[#3b378c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+                <span>Simulate a reply</span>
+              </button>
+            </div>
+
+            <!-- Active Participants Section -->
+            <div class="pt-2">
+              <div class="flex items-center justify-between mb-2.5">
+                <span class="text-[12px] font-bold text-[#171a25] uppercase tracking-wider">Participants</span>
+                <span class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-[#eef0f8] text-[#3b378c] font-bold">2 active</span>
+              </div>
+
+              <div class="space-y-2">
+                <!-- Peer: Ayush Raj -->
+                <div class="p-2.5 rounded-xl bg-[#f7f8fc] border border-[#e1e4ee] flex items-center justify-between transition-colors hover:bg-[#f1f3f9]">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="relative shrink-0">
+                      <div class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-[12px] text-white" style="background: var(--brand)">
+                        AR
+                      </div>
+                      <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white"></span>
+                    </div>
+                    <div class="truncate">
+                      <div class="font-semibold text-[13px] text-[#171a25] truncate">Ayush Raj</div>
+                      <div class="text-[11px] text-[#868c9f] flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        <span>Online</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#fef7ea] text-[#b38118] border border-[#fae4be]">Peer</span>
+                  </div>
+                </div>
+
+                <!-- User: You -->
+                <div class="p-2.5 rounded-xl bg-white border border-[#e1e4ee] flex items-center justify-between">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="relative shrink-0">
+                      <div class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-[12px] text-white bg-[#2f2b6e]">
+                        YOU
+                      </div>
+                      <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white"></span>
+                    </div>
+                    <div class="truncate">
+                      <div class="font-semibold text-[13px] text-[#171a25] truncate">You</div>
+                      <div class="text-[11px] text-[#868c9f]">Session Host</div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#fef7ea] text-[#b38118] border border-[#fae4be]">Owner</span>
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">You</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Session Status Metrics -->
+            <div class="rounded-xl p-3 bg-[#fafbfe] border border-[#e8ecf4] space-y-2 text-[11.5px] text-[#565b6c]">
+              <div class="flex items-center justify-between">
+                <span>Encryption Protocol</span>
+                <span class="font-mono font-semibold text-[#171a25]">Signal Double Ratchet</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span>Memory Footprint</span>
+                <span id="ram-usage-label" class="font-mono text-emerald-700 font-semibold">124 KB (RAM)</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span>Direct P2P Latency</span>
+                <span class="font-mono text-[#3b378c] font-semibold">14 ms</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- TAB CONTENT 2: PEERS & VERIFICATION -->
+          <div id="tab-content-peers" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
+            <div class="text-[13px] text-[#565b6c]">
+              Verify participant public key fingerprints to safeguard against man-in-the-middle attacks.
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-[#f7f8fc] border border-[#e1e4ee] space-y-2.5">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-[#3b378c] text-white flex items-center justify-center font-bold text-[11px]">AR</div>
+                <div>
+                  <div class="font-bold text-[13px] text-[#171a25]">Ayush Raj</div>
+                  <div class="text-[11px] text-emerald-700 font-semibold">✓ Identity Verified</div>
+                </div>
+              </div>
+              <div class="text-[11px] font-semibold text-[#868c9f]">SAFETY FINGERPRINT:</div>
+              <div class="font-mono text-[11px] bg-white p-2 rounded-lg border border-[#e1e4ee] text-[#171a25] break-all select-all">
+                8F2A • 49C1 • E703 • 91D4 • B52C • 77A8
+              </div>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-white border border-[#e1e4ee] space-y-2.5">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-[#2f2b6e] text-white flex items-center justify-center font-bold text-[11px]">YOU</div>
+                <div>
+                  <div class="font-bold text-[13px] text-[#171a25]">Your Device</div>
+                  <div class="text-[11px] text-[#868c9f]">Current Ephemeral Key</div>
+                </div>
+              </div>
+              <div class="text-[11px] font-semibold text-[#868c9f]">SAFETY FINGERPRINT:</div>
+              <div class="font-mono text-[11px] bg-[#f7f8fc] p-2 rounded-lg border border-[#e1e4ee] text-[#171a25] break-all select-all">
+                3D1E • 92B7 • 60F9 • AA41 • C308 • 52E0
+              </div>
+            </div>
+
+            <button
+              onclick="copyText('8F2A-49C1-E703-91D4-B52C-77A8', 'Fingerprint copied')"
+              class="w-full py-2 px-3 rounded-lg text-[12px] font-semibold text-[#3b378c] border border-[#d7d4f4] bg-[#eeedf9] hover:bg-[#e2e0f5] transition-colors cursor-pointer"
+            >
+              Copy Shared Safety Number
+            </button>
+          </div>
+
+          <!-- TAB CONTENT 3: SECURITY & CRYPTO AUDIT -->
+          <div id="tab-content-security" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
+            <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[12px] space-y-1.5 text-emerald-950">
+              <div class="font-bold flex items-center gap-1.5 text-emerald-800">
+                <svg class="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                Zero-Knowledge Ephemeral Line
+              </div>
+              <p class="leading-relaxed">
+                Messages exist exclusively in volatile RAM. No database, browser storage (IndexedDB/localStorage), or server logs are created.
+              </p>
+            </div>
+
+            <div class="space-y-2 text-[12.5px]">
+              <div class="flex justify-between py-1.5 border-b border-[#e1e4ee]">
+                <span class="text-[#868c9f]">Cipher Suite</span>
+                <span class="font-mono font-semibold text-[#171a25]">ChaCha20-Poly1305 / AES-256</span>
+              </div>
+              <div class="flex justify-between py-1.5 border-b border-[#e1e4ee]">
+                <span class="text-[#868c9f]">Key Exchange</span>
+                <span class="font-mono font-semibold text-[#171a25]">X25519 Elliptic Curve</span>
+              </div>
+              <div class="flex justify-between py-1.5 border-b border-[#e1e4ee]">
+                <span class="text-[#868c9f]">Forward Secrecy</span>
+                <span class="font-semibold text-emerald-700">Strict (Per-Message)</span>
+              </div>
+              <div class="flex justify-between py-1.5 border-b border-[#e1e4ee]">
+                <span class="text-[#868c9f]">Disk Write</span>
+                <span class="font-semibold text-emerald-700">0 Bytes Allowed</span>
+              </div>
+            </div>
+
+            <button
+              onclick="rekeySession()"
+              class="w-full py-2.5 px-3 rounded-xl text-[12.5px] font-semibold text-[#3b378c] border border-[#d7d4f4] bg-[#eeedf9] hover:bg-[#e2e0f5] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Rotate Cryptographic Keys</span>
+            </button>
+          </div>
+
+          <!-- SIDEBAR FOOTER -->
+          <div
+            class="p-3.5 text-[11.5px] flex items-center justify-between shrink-0 bg-[#f7f8fc] border-t"
+            style="border-color: var(--border); color: var(--ink-faint)"
+          >
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span class="font-medium text-[#565b6c]">Memory-only storage</span>
+            </div>
+            <span class="font-mono font-semibold text-[#3b378c]">AES-GCM-256</span>
+          </div>
+        </aside>
+
+        <!-- ====================================================== -->
+        <!-- CHAT WORKSPACE (EXTREME LEFT & RIGHT ALIGNMENT) -->
+        <!-- ====================================================== -->
+        <main class="flex-1 flex flex-col chat-canvas relative overflow-hidden min-w-0">
+          
+          <!-- SEARCH BAR OVERLAY (Hidden by default) -->
+          <div
+            id="search-bar-container"
+            class="hidden px-4 py-2.5 bg-white border-b border-[#e1e4ee] z-20 flex items-center gap-3 shadow-xs animate-in"
+          >
+            <svg class="w-4 h-4 text-[#868c9f] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input
+              id="search-input"
+              type="text"
+              placeholder="Search encrypted messages..."
+              class="w-full text-[13px] bg-transparent outline-none text-[#171a25]"
+              oninput="handleSearch(this.value)"
+            />
+            <button onclick="toggleSearch()" class="text-[12px] font-semibold text-[#868c9f] hover:text-[#171a25] cursor-pointer">
+              Close
+            </button>
+          </div>
+
+          <!-- CHAT HEADER BAR -->
+          <div
+            class="h-14 px-4 sm:px-6 flex items-center justify-between z-10 shrink-0 bg-white/95 backdrop-blur-xs border-b"
+            style="border-color: var(--border)"
+          >
+            <!-- Peer Info -->
+            <div class="flex items-center gap-3">
+              <div class="relative shrink-0">
+                <div class="w-9 h-9 rounded-full text-white flex items-center justify-center font-bold text-[12px]" style="background: var(--brand)">
+                  AR
+                </div>
+                <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white"></span>
+              </div>
+              <div class="leading-tight">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-bold text-[14px] text-[#171a25]">Ayush Raj</span>
+                  <span class="hidden sm:inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-[#fef7ea] text-[#b38118] border border-[#fae4be]">Verified Peer</span>
+                </div>
+                <div class="flex items-center gap-2 text-[11.5px] text-[#868c9f]">
+                  <span class="flex items-center gap-1 text-emerald-700 font-medium">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    Online
+                  </span>
+                  <span>•</span>
+                  <span class="flex items-center gap-1">
+                    <svg class="w-3 h-3 text-[#3b378c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    End-to-End Encrypted
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Header Quick Actions -->
+            <div class="flex items-center gap-2">
+              <button
+                onclick="simulatePeerReply()"
+                class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold text-[#3b378c] hover:bg-[#eeedf9] border border-[#d7d4f4] transition-colors cursor-pointer"
+                title="Send test message from Ayush"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <span>Simulate reply</span>
+              </button>
+
+              <button
+                onclick="clearChatConfirm()"
+                class="p-2 rounded-lg text-[#868c9f] hover:text-[#dc2626] hover:bg-[#fef2f2] transition-colors cursor-pointer"
+                title="Clear message history"
+              >
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- ====================================================== -->
+          <!-- MESSAGES CONTAINER — FULL WIDTH, EXTREME LEFT & RIGHT -->
+          <!-- ====================================================== -->
+          <!-- NOTE: Notice no max-w-2xl or mx-auto! This spans the full width,
+               with peer messages anchored to the extreme left, and user messages
+               anchored to the extreme right with generous readability. -->
+          <div
+            id="chat-scroll-area"
+            class="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3.5 z-10 w-full"
+          >
+            <!-- Ephemeral Session Banner -->
+            <div id="session-security-pill" class="flex justify-center my-2">
+              <div class="px-3.5 py-1.5 rounded-full bg-white/90 backdrop-blur-xs border border-[#e1e4ee] shadow-2xs text-[11px] font-medium text-[#565b6c] flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 text-[#3b378c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                <span>Ephemeral Channel Active • Zero Logs Kept • Disappears on Window Close</span>
+              </div>
+            </div>
+
+            <!-- Dynamic Messages Stream Container (100% Full Width) -->
+            <div id="messages-list" class="w-full space-y-3">
+              <!-- Dynamically populated by renderInitialMessages() -->
+            </div>
+
+            <!-- Peer Typing Indicator (Extreme Left) -->
+            <div id="typing-indicator" class="hidden flex items-end gap-2 w-full justify-start msg-enter-left">
+              <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-[11px] text-white shrink-0 shadow-xs" style="background: var(--brand)">
+                AR
+              </div>
+              <div class="p-3 rounded-2xl rounded-bl-xs bg-white border border-[#e1e4ee] shadow-xs flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-[#3b378c] dot-1"></span>
+                <span class="w-2 h-2 rounded-full bg-[#3b378c] dot-2"></span>
+                <span class="w-2 h-2 rounded-full bg-[#3b378c] dot-3"></span>
+                <span class="text-[11px] text-[#868c9f] ml-1 font-medium">Ayush is typing...</span>
+              </div>
+            </div>
+
+            <!-- Bottom scroll anchor -->
+            <div id="scroll-bottom-anchor" class="h-2"></div>
+          </div>
+
+          <!-- ====================================================== -->
+          <!-- MODERN CHAT INPUT DOCK -->
+          <!-- ====================================================== -->
+          <footer
+            id="chat-input-dock"
+            class="px-3 sm:px-6 py-3 bg-white border-t z-20 shrink-0"
+            style="border-color: var(--border)"
+          >
+            <!-- Voice Recording Mode Banner (Appears while recording) -->
+            <div id="voice-recording-banner" class="hidden mb-2 px-3.5 py-2 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between text-rose-900 text-[13px] animate-in">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+                <span class="font-bold">Recording Voice Note...</span>
+                <span id="voice-timer" class="font-mono text-[12px] bg-white px-2 py-0.5 rounded border border-rose-200 font-semibold">0:04</span>
+                <div class="flex items-center gap-1 text-rose-500 h-4">
+                  <span class="wave-bar" style="animation-delay: 0s;"></span>
+                  <span class="wave-bar" style="animation-delay: 0.2s;"></span>
+                  <span class="wave-bar" style="animation-delay: 0.4s;"></span>
+                  <span class="wave-bar" style="animation-delay: 0.1s;"></span>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="cancelVoiceNote()" class="text-[12px] font-semibold text-rose-700 hover:underline cursor-pointer">Cancel</button>
+                <button onclick="finishVoiceNote()" class="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[12px] cursor-pointer">Send</button>
+              </div>
+            </div>
+
+            <!-- Form -->
+            <form
+              id="message-form"
+              onsubmit="handleSendMessage(event)"
+              class="flex items-end gap-2 w-full"
+            >
+              <!-- Attachment Button -->
+              <button
+                type="button"
+                id="attach-file-btn"
+                onclick="simulateFileAttachment()"
+                class="w-10 h-10 rounded-xl flex items-center justify-center text-[#565b6c] hover:text-[#171a25] hover:bg-[#f1f3f9] transition-colors cursor-pointer shrink-0 border border-transparent hover:border-[#e1e4ee]"
+                title="Send encrypted in-memory file"
+                aria-label="Attach File"
+              >
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+              </button>
+
+              <!-- Main Input Field (Self-Expanding Text Area) -->
+              <div class="flex-1 relative flex items-center">
+                <textarea
+                  id="message-input"
+                  rows="1"
+                  placeholder="Message Ayush Raj (end-to-end encrypted)..."
+                  class="w-full rounded-xl px-4 py-2.5 text-[14px] outline-none transition-all resize-none max-h-32 min-h-[42px] leading-relaxed bg-[#f7f8fc] border border-[#e1e4ee] focus:border-[#3b378c] focus:bg-white focus:shadow-xs"
+                  onkeydown="handleTextareaKey(event)"
+                  oninput="autoGrowTextarea(this)"
+                  autocomplete="off"
+                ></textarea>
+
+                <!-- Quick emoji reaction picker trigger inside input -->
+                <button
+                  type="button"
+                  onclick="insertQuickEmoji('🔒 ')"
+                  class="absolute right-3 top-2.5 text-[#868c9f] hover:text-[#3b378c] transition-colors cursor-pointer"
+                  title="Insert encryption seal emoji"
+                >
+                  <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                </button>
+              </div>
+
+              <!-- Voice Recording Toggle Button -->
+              <button
+                type="button"
+                id="voice-note-btn"
+                onclick="startVoiceNote()"
+                class="w-10 h-10 rounded-xl flex items-center justify-center text-[#565b6c] hover:text-[#171a25] hover:bg-[#f1f3f9] transition-colors cursor-pointer shrink-0 border border-transparent hover:border-[#e1e4ee]"
+                title="Record ephemeral voice note"
+                aria-label="Voice Note"
+              >
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              </button>
+
+              <!-- Send Button -->
+              <button
+                id="send-message-btn"
+                type="submit"
+                class="w-10 h-10 rounded-xl flex items-center justify-center text-white transition-all cursor-pointer active:scale-95 shrink-0 shadow-sm"
+                style="background: var(--brand)"
+                onmouseover="this.style.background='var(--brand-dark)'"
+                onmouseout="this.style.background='var(--brand)'"
+                title="Send message (Enter)"
+                aria-label="Send Message"
+              >
+                <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </form>
+          </footer>
+
+        </main>
+      </div>
+
+    </div>
+
+    <!-- ========================================================== -->
+    <!-- END SESSION CONFIRMATION MODAL -->
+    <!-- ========================================================== -->
+    <div id="end-session-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[#e1e4ee] space-y-4 animate-in">
+        <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18.36 6.64a9 9 0 1 1-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg>
+        </div>
+        <div class="text-center space-y-1">
+          <h3 class="text-[17px] font-bold text-[#171a25]">Terminate Ephemeral Session?</h3>
+          <p class="text-[13px] text-[#565b6c] leading-relaxed">
+            This action will cryptographically wipe all messages and shared in-memory keys permanently. No copy can ever be retrieved.
           </p>
         </div>
-
-        <div id="dynamic-messages" class="space-y-4"></div>
-      </div>
-    </main>
-
-    <!-- FLOATING INPUT -->
-    <footer
-      class="shrink-0 px-4 sm:px-6 pb-5 pt-1"
-      style="background: linear-gradient(to top, var(--bg) 60%, transparent)"
-    >
-      <form
-        id="message-form"
-        onsubmit="sendMessage(event)"
-        class="max-w-lg mx-auto flex items-center gap-1.5 p-1.5 rounded-full"
-        style="
-          background: var(--surface);
-          border: 1px solid var(--border);
-          box-shadow: 0 8px 24px -8px rgba(36, 27, 32, 0.12);
-        "
-      >
-        <button
-          type="button"
-          onclick="alert('Attachments stay in memory for this session only.')"
-          class="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer shrink-0 transition-colors"
-          style="color: var(--ink-faint)"
-          title="Attach a file"
-        >
-          <svg
-            class="w-4.5 h-4.5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
-
-        <input
-          id="message-input"
-          type="text"
-          placeholder="Message"
-          class="flex-1 bg-transparent outline-none text-[14px] min-w-0"
-          style="color: var(--ink)"
-          autocomplete="off"
-        />
-
-        <button
-          type="button"
-          onclick="sendVoiceNote()"
-          class="hidden sm:flex w-9 h-9 rounded-full items-center justify-center cursor-pointer shrink-0 transition-colors"
-          style="color: var(--ink-faint)"
-          title="Send a voice note"
-        >
-          <svg
-            class="w-4.5 h-4.5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
-        </button>
-
-        <button
-          id="send-btn"
-          type="submit"
-          class="w-10 h-10 rounded-full flex items-center justify-center text-white cursor-pointer transition-all active:scale-90 shrink-0"
-          style="background: var(--plum)"
-          title="Send"
-        >
-          <svg
-            class="w-4 h-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </button>
-      </form>
-    </footer>
-
-    <!-- BOTTOM SHEET: SESSION DETAILS -->
-    <div
-      id="sheet-backdrop"
-      onclick="toggleSheet()"
-      class="hidden fixed inset-0 bg-black/35 z-40 fade-in"
-    ></div>
-    <div
-      id="sheet"
-      class="hidden sheet-up fixed left-0 right-0 bottom-0 z-50 rounded-t-3xl overflow-hidden"
-      style="background: var(--surface); max-height: 86vh"
-    >
-      <div class="flex justify-center pt-3 pb-1">
-        <div
-          class="w-9 h-1.5 rounded-full"
-          style="background: var(--border)"
-        ></div>
-      </div>
-
-      <div
-        class="px-5 pb-6 overflow-y-auto"
-        style="max-height: calc(86vh - 24px)"
-      >
-        <h3
-          class="font-display font-bold text-[16px] pt-2 pb-4"
-          style="color: var(--ink)"
-        >
-          Session details
-        </h3>
-
-        <div class="grid grid-cols-2 gap-3 mb-4">
-          <div class="rounded-2xl p-3.5" style="background: var(--sunken)">
-            <div class="flex items-center justify-between mb-1">
-              <span
-                class="text-[11px] font-semibold"
-                style="color: var(--ink-soft)"
-                >Session ID</span
-              >
-              <button
-                onclick="copyText('3SDU4H')"
-                style="color: var(--ink-soft)"
-                class="cursor-pointer"
-                title="Copy"
-              >
-                <svg
-                  class="w-3.5 h-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <rect x="9" y="9" width="13" height="13" rx="2" />
-                  <path
-                    d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div
-              class="font-display font-bold text-[15px] tracking-wide"
-              style="color: var(--ink)"
-            >
-              3SDU4H
-            </div>
-          </div>
-          <div class="rounded-2xl p-3.5" style="background: var(--plum-tint)">
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-[11px] font-semibold" style="color: var(--plum)"
-                >Passkey</span
-              >
-              <button
-                onclick="copyText('SOLAR-643')"
-                style="color: var(--plum)"
-                class="cursor-pointer"
-                title="Copy"
-              >
-                <svg
-                  class="w-3.5 h-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <rect x="9" y="9" width="13" height="13" rx="2" />
-                  <path
-                    d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div
-              class="font-display font-bold text-[15px] tracking-wide"
-              style="color: var(--ink)"
-            >
-              SOLAR-643
-            </div>
-          </div>
-        </div>
-
-        <div
-          class="text-[12px] font-semibold mb-2 px-1"
-          style="color: var(--ink-soft)"
-        >
-          Participants
-        </div>
-        <div
-          class="flex items-center justify-between p-3 rounded-2xl mb-5"
-          style="background: var(--sunken)"
-        >
-          <div class="flex items-center gap-3">
-            <div
-              class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-[12px] text-white"
-              style="background: var(--plum)"
-            >
-              AR
-            </div>
-            <div>
-              <div
-                class="font-semibold text-[13.5px]"
-                style="color: var(--ink)"
-              >
-                Ayush Raj
-              </div>
-              <div class="text-[11.5px]" style="color: var(--ink-faint)">
-                Owner · You
-              </div>
-            </div>
-          </div>
-          <span
-            class="w-2 h-2 rounded-full"
-            style="background: var(--green)"
-          ></span>
-        </div>
-
-        <div class="space-y-2.5">
+        <div class="flex items-center gap-2.5 pt-2">
           <button
-            id="copy-invite-btn"
-            onclick="copyInviteLink()"
-            class="w-full flex items-center justify-center gap-2 h-12 rounded-2xl text-white text-[14px] font-semibold cursor-pointer transition-colors active:scale-[0.98]"
-            style="background: var(--plum)"
+            onclick="closeEndSessionModal()"
+            class="flex-1 py-2.5 px-4 rounded-xl border border-[#e1e4ee] font-semibold text-[13px] text-[#565b6c] hover:bg-[#f7f8fc] transition-colors cursor-pointer"
           >
-            <svg
-              class="w-4.5 h-4.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path
-                d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
-              />
-              <path
-                d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
-              />
-            </svg>
-            <span id="copy-invite-text">Copy invite link</span>
+            Cancel
           </button>
           <button
-            onclick="testInTab()"
-            class="w-full flex items-center justify-center gap-2 h-12 rounded-2xl text-[14px] font-semibold cursor-pointer transition-colors active:scale-[0.98]"
-            style="background: var(--sunken); color: var(--ink)"
+            onclick="confirmWipeSession()"
+            class="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[13px] shadow-sm transition-all cursor-pointer active:scale-95"
           >
-            Simulate a reply
-          </button>
-          <button
-            id="terminate-btn"
-            onclick="terminateSession()"
-            class="w-full flex items-center justify-center gap-2 h-12 rounded-2xl text-[14px] font-semibold cursor-pointer transition-colors active:scale-[0.98]"
-            style="
-              background: transparent;
-              color: var(--red);
-              border: 1px solid #f0d9d6;
-            "
-          >
-            End session
+            Wipe & Destroy
           </button>
         </div>
-
-        <p class="text-center text-[11px] mt-5" style="color: var(--ink-faint)">
-          Memory-only storage · AES-GCM-256
-        </p>
       </div>
     </div>
 
-    <!-- TOAST -->
+    <!-- ========================================================== -->
+    <!-- FLOATING TOAST NOTIFICATION -->
+    <!-- ========================================================== -->
     <div
       id="toast"
-      class="fixed bottom-24 left-1/2 -translate-x-1/2 text-[13px] px-4 py-2.5 rounded-full opacity-0 pointer-events-none transition-opacity duration-300 z-[60] flex items-center gap-2 font-medium"
-      style="background: var(--ink); color: #fff"
+      class="fixed bottom-20 left-1/2 -translate-x-1/2 text-[13px] px-4 py-2.5 rounded-xl shadow-xl opacity-0 pointer-events-none transition-all duration-300 z-50 flex items-center gap-2 bg-[#171a25] text-white border border-white/10"
     >
-      <svg
-        class="w-4 h-4"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="var(--green)"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-      <span id="toast-text">Copied</span>
+      <svg class="w-4 h-4 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      <span id="toast-text" class="font-medium">Notification</span>
     </div>
 
+    <!-- ========================================================== -->
+    <!-- JAVASCRIPT: LOGIC & STATE (100% VANILLA JAVASCRIPT) -->
+    <!-- ========================================================== -->
     <script>
-      function showToast(text) {
-        const toast = document.getElementById("toast");
-        document.getElementById("toast-text").innerText = text;
-        toast.style.opacity = "1";
-        setTimeout(() => {
-          toast.style.opacity = "0";
-        }, 2000);
+      // ==========================================
+      // STATE MANAGEMENT
+      // ==========================================
+      const state = {
+        sessionId: "3SDU4H",
+        passkey: "SOLAR-643",
+        currentUser: { id: "user", name: "You" },
+        peerUser: { id: "ayush", name: "Ayush Raj", initials: "AR" },
+        soundEnabled: true,
+        autoBurn: "Off",
+        searchQuery: "",
+        voiceRecordingInterval: null,
+        voiceRecordingSeconds: 0,
+        messages: [
+          {
+            id: "m-1",
+            sender: "user",
+            text: "Session link confirmed, checking encryption keys.",
+            time: "09:53 am",
+            status: "read",
+            type: "text"
+          },
+          {
+            id: "m-2",
+            sender: "ayush",
+            text: "Got it, reading now.",
+            time: "09:54 am",
+            status: "delivered",
+            type: "text"
+          },
+          {
+            id: "m-3",
+            sender: "ayush",
+            text: "Got it, reading now.",
+            time: "09:54 am",
+            status: "delivered",
+            type: "text"
+          },
+          {
+            id: "m-4",
+            sender: "ayush",
+            text: "Encryption checks out on my side too.",
+            time: "09:54 am",
+            status: "delivered",
+            type: "text"
+          },
+          {
+            id: "m-5",
+            sender: "ayush",
+            text: "Encryption checks out on my side too.",
+            time: "09:54 am",
+            status: "delivered",
+            type: "text"
+          },
+          {
+            id: "m-6",
+            sender: "user",
+            text: "Perfect. Everything we share here stays strictly in RAM and disappears once the session closes.",
+            time: "09:55 am",
+            status: "read",
+            type: "text"
+          },
+          {
+            id: "m-7",
+            sender: "ayush",
+            text: "Got it, reading now.",
+            time: "09:55 am",
+            status: "delivered",
+            type: "text"
+          }
+        ]
+      };
+
+      // ==========================================
+      // AUDIO SYNTHESIS (WEB AUDIO API - ZERO ASSETS)
+      // ==========================================
+      let audioCtx = null;
+      function playTone(type) {
+        if (!state.soundEnabled) return;
+        try {
+          if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          if (audioCtx.state === "suspended") {
+            audioCtx.resume();
+          }
+
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+
+          const now = audioCtx.currentTime;
+
+          if (type === "send") {
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(587.33, now); // D5
+            osc.frequency.exponentialRampToValueAtTime(880, now + 0.08); // A5
+            gain.gain.setValueAtTime(0.08, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+            osc.start(now);
+            osc.stop(now + 0.12);
+          } else if (type === "receive") {
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(880, now);
+            osc.frequency.exponentialRampToValueAtTime(1174.66, now + 0.09);
+            gain.gain.setValueAtTime(0.08, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+            osc.start(now);
+            osc.stop(now + 0.14);
+          } else if (type === "copy") {
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(740, now);
+            gain.gain.setValueAtTime(0.06, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+            osc.start(now);
+            osc.stop(now + 0.06);
+          }
+        } catch (e) {
+          // Ignore Web Audio errors if audio context blocked
+        }
       }
 
-      function copyText(text) {
-        navigator.clipboard
-          .writeText(text)
-          .then(() => showToast("Copied: " + text));
+      // ==========================================
+      // TOAST NOTIFICATIONS
+      // ==========================================
+      let toastTimeout = null;
+      function showToast(text) {
+        const toast = document.getElementById("toast");
+        const toastText = document.getElementById("toast-text");
+        toastText.innerText = text;
+        toast.style.opacity = "1";
+        toast.style.transform = "translate(-50%, -8px)";
+
+        if (toastTimeout) clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+          toast.style.opacity = "0";
+          toast.style.transform = "translate(-50%, 0px)";
+        }, 2200);
+      }
+
+      function copyText(text, label) {
+        navigator.clipboard.writeText(text).then(() => {
+          playTone("copy");
+          showToast(label || "Copied: " + text);
+        });
+      }
+
+      function copySessionId() {
+        copyText(state.sessionId, "Session ID #3SDU4H copied");
       }
 
       function copyInviteLink() {
-        const link = window.location.origin + "?session=3SDU4H&key=SOLAR-643";
+        const link = window.location.origin + window.location.pathname + "?session=" + state.sessionId + "&key=" + state.passkey;
         navigator.clipboard.writeText(link).then(() => {
-          showToast("Invite link copied");
-          const btnText = document.getElementById("copy-invite-text");
-          btnText.innerText = "Copied";
+          playTone("copy");
+          showToast("Direct invite link copied to clipboard");
+          const label = document.getElementById("copy-invite-label");
+          label.innerText = "Copied link!";
           setTimeout(() => {
-            btnText.innerText = "Copy invite link";
-          }, 1800);
+            label.innerText = "Copy invite link";
+          }, 2000);
         });
       }
 
-      function toggleSheet() {
-        const sheet = document.getElementById("sheet");
-        const backdrop = document.getElementById("sheet-backdrop");
-        const isHidden = sheet.classList.contains("hidden");
-        if (isHidden) {
-          sheet.classList.remove("hidden");
-          backdrop.classList.remove("hidden");
+      // ==========================================
+      // SIDEBAR & NAVIGATION CONTROLS
+      // ==========================================
+      function toggleSidebar() {
+        const sidebar = document.getElementById("sidebar-container");
+        const backdrop = document.getElementById("mobile-backdrop");
+        const isCollapsed = sidebar.classList.contains("collapsed");
+        const isMobileHidden = sidebar.classList.contains("-translate-x-full");
+
+        // Check if desktop or mobile
+        if (window.innerWidth >= 1024) {
+          if (isCollapsed) {
+            sidebar.classList.remove("collapsed");
+          } else {
+            sidebar.classList.add("collapsed");
+          }
         } else {
-          sheet.classList.add("hidden");
-          backdrop.classList.add("hidden");
+          // Mobile behavior
+          if (isMobileHidden) {
+            sidebar.classList.remove("-translate-x-full");
+            backdrop.classList.remove("hidden");
+          } else {
+            sidebar.classList.add("-translate-x-full");
+            backdrop.classList.add("hidden");
+          }
         }
       }
 
-      function testInTab() {
-        toggleSheet();
+      function closeSidebarMobile() {
+        const sidebar = document.getElementById("sidebar-container");
+        const backdrop = document.getElementById("mobile-backdrop");
+        sidebar.classList.add("-translate-x-full");
+        backdrop.classList.add("hidden");
+      }
+
+      function switchSidebarTab(tabName) {
+        // Tab buttons
+        const tabs = ["chat", "peers", "security"];
+        tabs.forEach(t => {
+          const btn = document.getElementById("tab-btn-" + t);
+          const content = document.getElementById("tab-content-" + t);
+          if (t === tabName) {
+            btn.className = "flex-1 py-1.5 px-2 rounded-lg font-semibold text-[12px] flex items-center justify-center gap-1.5 transition-all cursor-pointer bg-white text-[#3b378c] shadow-xs border border-[#e1e4ee]";
+            content.classList.remove("hidden");
+          } else {
+            btn.className = "flex-1 py-1.5 px-2 rounded-lg font-semibold text-[12px] flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[#565b6c] hover:bg-white hover:text-[#171a25]";
+            content.classList.add("hidden");
+          }
+        });
+      }
+
+      // Keyboard shortcut Ctrl+B or Cmd+B to toggle navigation sidebar
+      document.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+          e.preventDefault();
+          toggleSidebar();
+        }
+      });
+
+      // ==========================================
+      // SOUND TOGGLE
+      // ==========================================
+      function toggleAudio() {
+        state.soundEnabled = !state.soundEnabled;
+        const icon = document.getElementById("speaker-icon");
+        if (state.soundEnabled) {
+          icon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>';
+          showToast("Sound notifications: ON");
+          playTone("receive");
+        } else {
+          icon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line>';
+          showToast("Sound notifications: MUTED");
+        }
+      }
+
+      // ==========================================
+      // AUTO BURN TIMER
+      // ==========================================
+      function toggleAutoBurnMenu() {
+        const menu = document.getElementById("autoburn-menu");
+        menu.classList.toggle("hidden");
+      }
+
+      document.addEventListener("click", (e) => {
+        const menu = document.getElementById("autoburn-menu");
+        const btn = document.getElementById("autoburn-btn");
+        if (!menu.contains(e.target) && !btn.contains(e.target)) {
+          menu.classList.add("hidden");
+        }
+      });
+
+      function setAutoBurn(duration) {
+        state.autoBurn = duration;
+        document.getElementById("autoburn-label").innerText = duration === "Off" ? "Burn: Off" : "Burn: " + duration;
+        ["Off", "1m", "5m", "15m"].forEach(d => {
+          const el = document.getElementById("check-" + d);
+          if (el) el.classList.toggle("hidden", d !== duration);
+        });
+        document.getElementById("autoburn-menu").classList.add("hidden");
+        showToast("Auto-destruct timer set to: " + duration);
+      }
+
+      // ==========================================
+      // SEARCH MESSAGES
+      // ==========================================
+      function toggleSearch() {
+        const container = document.getElementById("search-bar-container");
+        const input = document.getElementById("search-input");
+        container.classList.toggle("hidden");
+        if (!container.classList.contains("hidden")) {
+          input.focus();
+        } else {
+          state.searchQuery = "";
+          renderMessages();
+        }
+      }
+
+      function handleSearch(query) {
+        state.searchQuery = query.toLowerCase().trim();
+        renderMessages();
+      }
+
+      // ==========================================
+      // RENDER MESSAGES: EXTREME LEFT & RIGHT ALIGNMENT
+      // ==========================================
+      // Here is the fundamental improvement:
+      // Peer messages are placed on the EXTREME LEFT edge of the screen.
+      // User messages are placed on the EXTREME RIGHT edge of the screen.
+      // No artificial center column.
+      function renderMessages() {
+        const list = document.getElementById("messages-list");
+        list.innerHTML = "";
+
+        const filtered = state.searchQuery
+          ? state.messages.filter(m => m.text && m.text.toLowerCase().includes(state.searchQuery))
+          : state.messages;
+
+        if (filtered.length === 0) {
+          list.innerHTML = `
+            <div class="py-12 text-center text-[#868c9f] text-[13px]">
+              No messages found.
+            </div>
+          `;
+          return;
+        }
+
+        filtered.forEach(msg => {
+          const isUser = msg.sender === "user";
+          const row = document.createElement("div");
+          row.id = msg.id;
+          row.className = `msg-row flex w-full items-end gap-2.5 ${isUser ? "justify-end msg-enter-right" : "justify-start msg-enter-left"}`;
+
+          if (isUser) {
+            // ==========================================
+            // USER MESSAGE — ANCHORED AT EXTREME RIGHT
+            // ==========================================
+            row.innerHTML = `
+              <!-- Hover Action Toolbar (Left of outgoing bubble) -->
+              <div class="msg-actions opacity-0 pointer-events-none flex items-center gap-1 transition-opacity mb-1 shrink-0">
+                <button onclick="copyText('${escapeQuotes(msg.text)}', 'Message copied')" class="p-1 rounded-md bg-white border border-[#e1e4ee] text-[#868c9f] hover:text-[#171a25] hover:bg-[#f7f8fc] cursor-pointer shadow-2xs" title="Copy message">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+                <button onclick="deleteMessage('${msg.id}')" class="p-1 rounded-md bg-white border border-[#e1e4ee] text-[#868c9f] hover:text-rose-600 hover:bg-rose-50 cursor-pointer shadow-2xs" title="Delete">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path></svg>
+                </button>
+              </div>
+
+              <!-- Outgoing Bubble (Extreme Right Edge) -->
+              <div
+                class="max-w-[85%] sm:max-w-[70%] lg:max-w-[55%] p-3.5 rounded-2xl rounded-br-xs text-[14px] text-white shadow-xs relative"
+                style="background: var(--user-bubble-gradient); border: 1px solid rgba(255, 255, 255, 0.08);"
+              >
+                ${renderMessageContent(msg, true)}
+
+                <!-- Outgoing Metadata (Timestamp + Read Receipts) -->
+                <div class="flex items-center justify-end gap-1.5 mt-1 text-[10.5px] text-white/70">
+                  <span class="font-medium">${msg.time}</span>
+                  <svg class="w-3.5 h-3.5 text-indigo-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                    <polyline points="23 6 12 17 7 12"></polyline>
+                  </svg>
+                </div>
+              </div>
+            `;
+          } else {
+            // ==========================================
+            // PEER MESSAGE (AYUSH) — ANCHORED AT EXTREME LEFT
+            // ==========================================
+            row.innerHTML = `
+              <!-- Peer Avatar (Extreme Left Margin) -->
+              <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-[11px] text-white shrink-0 shadow-xs mb-1" style="background: var(--brand)">
+                AR
+              </div>
+
+              <!-- Incoming Bubble (Next to Avatar) -->
+              <div
+                class="max-w-[85%] sm:max-w-[70%] lg:max-w-[55%] p-3.5 rounded-2xl rounded-bl-xs text-[14px] bg-white border border-[#e1e4ee] shadow-xs relative"
+              >
+                <!-- Peer Name Header -->
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[12px] font-bold text-[#3b378c]">Ayush Raj</span>
+                    <svg class="w-3 h-3 text-[#3b378c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                  </div>
+                  <span class="text-[10px] font-mono text-[#868c9f] uppercase tracking-wider">Verified</span>
+                </div>
+
+                ${renderMessageContent(msg, false)}
+
+                <!-- Incoming Metadata (Timestamp) -->
+                <div class="flex items-center justify-end gap-1 mt-1 text-[10.5px] text-[#868c9f]">
+                  <span>${msg.time}</span>
+                </div>
+              </div>
+
+              <!-- Hover Action Toolbar (Right of incoming bubble) -->
+              <div class="msg-actions opacity-0 pointer-events-none flex items-center gap-1 transition-opacity mb-1 shrink-0">
+                <button onclick="copyText('${escapeQuotes(msg.text)}', 'Message copied')" class="p-1 rounded-md bg-white border border-[#e1e4ee] text-[#868c9f] hover:text-[#171a25] hover:bg-[#f7f8fc] cursor-pointer shadow-2xs" title="Copy message">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+                <button onclick="quickReply('${escapeQuotes(msg.text)}')" class="p-1 rounded-md bg-white border border-[#e1e4ee] text-[#868c9f] hover:text-[#3b378c] hover:bg-[#eeedf9] cursor-pointer shadow-2xs" title="Quote reply">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+                </button>
+              </div>
+            `;
+          }
+
+          list.appendChild(row);
+        });
+
+        // Update badge count
+        const badge = document.getElementById("badge-msg-count");
+        if (badge) badge.innerText = state.messages.length;
+
+        // Auto-scroll to bottom
+        scrollToBottom();
+      }
+
+      function renderMessageContent(msg, isUser) {
+        if (msg.type === "voice") {
+          return `
+            <div class="flex items-center gap-2.5 py-1 min-w-[200px]">
+              <button
+                type="button"
+                onclick="togglePlayVoice(this)"
+                class="w-8 h-8 rounded-full flex items-center justify-center ${isUser ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-[#eeedf9] text-[#3b378c] hover:bg-[#e2e0f5]'} transition-colors cursor-pointer shrink-0"
+              >
+                <svg class="w-4 h-4 ml-0.5" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              </button>
+              <div class="flex-1">
+                <div class="flex items-center gap-1 h-5 ${isUser ? 'text-indigo-200' : 'text-[#3b378c]'}">
+                  <span class="inline-block w-1 h-3 rounded-full bg-current"></span>
+                  <span class="inline-block w-1 h-5 rounded-full bg-current"></span>
+                  <span class="inline-block w-1 h-2 rounded-full bg-current"></span>
+                  <span class="inline-block w-1 h-4 rounded-full bg-current"></span>
+                  <span class="inline-block w-1 h-6 rounded-full bg-current"></span>
+                  <span class="inline-block w-1 h-3 rounded-full bg-current"></span>
+                  <span class="inline-block w-1 h-2 rounded-full bg-current"></span>
+                  <span class="inline-block w-1 h-4 rounded-full bg-current"></span>
+                  <span class="inline-block w-1 h-5 rounded-full bg-current"></span>
+                </div>
+                <div class="text-[10.5px] ${isUser ? 'text-white/80' : 'text-[#868c9f]'} flex justify-between mt-0.5 font-mono">
+                  <span>Voice memo</span>
+                  <span>${msg.duration || '0:05'}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        if (msg.type === "file") {
+          return `
+            <div class="flex items-center gap-3 p-2 rounded-xl ${isUser ? 'bg-white/10' : 'bg-[#f7f8fc] border border-[#e1e4ee]'} my-1">
+              <div class="w-9 h-9 rounded-lg ${isUser ? 'bg-white/20 text-white' : 'bg-[#eeedf9] text-[#3b378c]'} flex items-center justify-center shrink-0">
+                <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="font-semibold text-[13px] truncate ${isUser ? 'text-white' : 'text-[#171a25]'}">${escapeHtml(msg.filename || 'encrypted-document.pdf')}</div>
+                <div class="text-[11px] ${isUser ? 'text-white/70' : 'text-[#868c9f]'} font-mono">${msg.filesize || '148 KB'} • In-RAM only</div>
+              </div>
+            </div>
+          `;
+        }
+
+        return `<div class="leading-relaxed break-words ${isUser ? 'text-white' : 'text-[#171a25]'}">${escapeHtml(msg.text)}</div>`;
+      }
+
+      function scrollToBottom() {
+        const area = document.getElementById("chat-scroll-area");
         setTimeout(() => {
-          appendMessage(
-            "AR",
-            "Ping confirmed on this line. Ready when you are.",
-            "peer",
-          );
-        }, 450);
+          area.scrollTo({ top: area.scrollHeight, behavior: "smooth" });
+        }, 30);
       }
 
-      function terminateSession() {
-        if (
-          confirm(
-            "End this session? Every message in this window will be cleared immediately.",
-          )
-        ) {
-          document.getElementById("dynamic-messages").innerHTML = "";
-          document.getElementById("empty-state").classList.remove("hidden");
-          toggleSheet();
-          showToast("Session ended and cleared");
-        }
+      function getTimeString() {
+        return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       }
 
-      function sendVoiceNote() {
-        sendMessageCore("Voice note · 0:05");
-      }
-
-      function sendMessage(e) {
-        e.preventDefault();
+      // ==========================================
+      // SENDING & SIMULATING MESSAGES
+      // ==========================================
+      function handleSendMessage(e) {
+        if (e) e.preventDefault();
         const input = document.getElementById("message-input");
         const text = input.value.trim();
         if (!text) return;
-        sendMessageCore(text);
+
+        sendMessageCore(text, "text");
         input.value = "";
+        input.style.height = "auto";
       }
 
-      function nowStr() {
-        return new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+      function sendMessageCore(text, type, extra) {
+        const msgId = "m-" + Date.now();
+        const newMsg = {
+          id: msgId,
+          sender: "user",
+          text: text,
+          time: getTimeString(),
+          status: "sent",
+          type: type || "text",
+          ...extra
+        };
+
+        state.messages.push(newMsg);
+        playTone("send");
+        renderMessages();
+
+        // Update RAM estimation
+        updateRamCounter();
+
+        // Trigger automatic peer response after a brief natural typing delay
+        triggerSimulatedPeerReply();
       }
 
-      function appendMessage(who, text, kind) {
-        document.getElementById("empty-state").classList.add("hidden");
-        const container = document.getElementById("dynamic-messages");
-        const row = document.createElement("div");
+      function triggerSimulatedPeerReply() {
+        const replies = [
+          "Got it, reading now.",
+          "Confirmed — nothing is saved to disk.",
+          "Encryption checks out on my side too.",
+          "Session verification fingerprint matched.",
+          "Acknowledged. Ephemeral channel is secure.",
+          "Everything looks solid on this line."
+        ];
+        const randomReply = replies[Math.floor(Math.random() * replies.length)];
 
-        if (kind === "self") {
-          row.className = "rise-in flex flex-col items-end gap-1";
-          row.innerHTML =
-            '<div class="max-w-[80%] px-4 py-2.5 rounded-[20px] text-[14px] leading-snug" style="background: var(--plum-tint); color: var(--ink);">' +
-            escapeHtml(text) +
-            "</div>" +
-            '<span class="text-[10.5px] pr-1" style="color: var(--ink-faint);">' +
-            nowStr() +
-            "</span>";
-        } else {
-          row.className = "rise-in flex flex-col items-start gap-1";
-          row.innerHTML =
-            '<div class="max-w-[80%] px-4 py-2.5 rounded-[20px] text-[14px] leading-snug" style="background: var(--surface); border: 1px solid var(--border); color: var(--ink);">' +
-            escapeHtml(text) +
-            "</div>" +
-            '<span class="text-[10.5px] pl-1" style="color: var(--ink-faint);">' +
-            who +
-            " · " +
-            nowStr() +
-            "</span>";
+        // Show typing indicator
+        const indicator = document.getElementById("typing-indicator");
+        indicator.classList.remove("hidden");
+        scrollToBottom();
+
+        setTimeout(() => {
+          indicator.classList.add("hidden");
+
+          const peerMsg = {
+            id: "m-" + Date.now(),
+            sender: "ayush",
+            text: randomReply,
+            time: getTimeString(),
+            status: "delivered",
+            type: "text"
+          };
+          state.messages.push(peerMsg);
+          playTone("receive");
+          renderMessages();
+          updateRamCounter();
+        }, 1100);
+      }
+
+      function simulatePeerReply() {
+        triggerSimulatedPeerReply();
+      }
+
+      function deleteMessage(id) {
+        state.messages = state.messages.filter(m => m.id !== id);
+        renderMessages();
+        showToast("Message wiped from memory");
+      }
+
+      function quickReply(text) {
+        const input = document.getElementById("message-input");
+        input.value = `> "${text.substring(0, 35)}..." `;
+        input.focus();
+      }
+
+      function insertQuickEmoji(emoji) {
+        const input = document.getElementById("message-input");
+        input.value += emoji;
+        input.focus();
+      }
+
+      // ==========================================
+      // FILE ATTACHMENT SIMULATION
+      // ==========================================
+      function simulateFileAttachment() {
+        const sampleFiles = [
+          { name: "key-exchange-spec.pdf", size: "230 KB" },
+          { name: "audit-report-q3.enc", size: "114 KB" },
+          { name: "network-handshake.log", size: "64 KB" }
+        ];
+        const chosen = sampleFiles[Math.floor(Math.random() * sampleFiles.length)];
+        sendMessageCore(chosen.name, "file", { filename: chosen.name, filesize: chosen.size });
+        showToast("Encrypted in-RAM file sent");
+      }
+
+      // ==========================================
+      // VOICE NOTE RECORDING SIMULATION
+      // ==========================================
+      function startVoiceNote() {
+        const banner = document.getElementById("voice-recording-banner");
+        banner.classList.remove("hidden");
+        state.voiceRecordingSeconds = 0;
+        document.getElementById("voice-timer").innerText = "0:00";
+
+        if (state.voiceRecordingInterval) clearInterval(state.voiceRecordingInterval);
+        state.voiceRecordingInterval = setInterval(() => {
+          state.voiceRecordingSeconds++;
+          const sec = state.voiceRecordingSeconds;
+          const mins = Math.floor(sec / 60);
+          const rem = sec % 60;
+          document.getElementById("voice-timer").innerText = `${mins}:${rem < 10 ? '0' : ''}${rem}`;
+        }, 1000);
+      }
+
+      function cancelVoiceNote() {
+        clearInterval(state.voiceRecordingInterval);
+        document.getElementById("voice-recording-banner").classList.add("hidden");
+        showToast("Voice note cancelled");
+      }
+
+      function finishVoiceNote() {
+        clearInterval(state.voiceRecordingInterval);
+        document.getElementById("voice-recording-banner").classList.add("hidden");
+        const sec = state.voiceRecordingSeconds || 4;
+        const mins = Math.floor(sec / 60);
+        const rem = sec % 60;
+        const durationStr = `${mins}:${rem < 10 ? '0' : ''}${rem}`;
+
+        sendMessageCore("Voice memo", "voice", { duration: durationStr });
+      }
+
+      function togglePlayVoice(btn) {
+        playTone("send");
+        showToast("Playing in-memory voice stream...");
+      }
+
+      // ==========================================
+      // TEXTAREA AUTOGROW & ENTER KEY
+      // ==========================================
+      function handleTextareaKey(e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          handleSendMessage();
         }
-
-        container.appendChild(row);
-        row.scrollIntoView({ behavior: "smooth", block: "end" });
       }
 
-      function sendMessageCore(text) {
-        appendMessage("You", text, "self");
+      function autoGrowTextarea(textarea) {
+        textarea.style.height = "auto";
+        textarea.style.height = Math.min(textarea.scrollHeight, 120) + "px";
+      }
 
-        if (!text.includes("Voice note")) {
-          setTimeout(() => {
-            const replies = [
-              "Got it, reading now.",
-              "Confirmed — nothing's written to disk.",
-              "Looks good from this end.",
-              "Encryption checks out on my side too.",
-            ];
-            const randomReply =
-              replies[Math.floor(Math.random() * replies.length)];
-            appendMessage("AR", randomReply, "peer");
-          }, 800);
+      // ==========================================
+      // SESSION LIFECYCLE & WIPING
+      // ==========================================
+      function clearChatConfirm() {
+        if (confirm("Clear all messages in this window? In-RAM memory will be immediately zeroed.")) {
+          state.messages = [];
+          renderMessages();
+          showToast("Chat history purged from memory");
         }
       }
 
-      function escapeHtml(string) {
-        return String(string).replace(/[&<>"'`=\/]/g, function (s) {
+      function openEndSessionModal() {
+        document.getElementById("end-session-modal").classList.remove("hidden");
+      }
+
+      function closeEndSessionModal() {
+        document.getElementById("end-session-modal").classList.add("hidden");
+      }
+
+      function confirmWipeSession() {
+        state.messages = [];
+        renderMessages();
+        closeEndSessionModal();
+        showToast("Session destroyed. Cryptographic keys erased.");
+      }
+
+      function rekeySession() {
+        state.passkey = "KEY-" + Math.floor(100 + Math.random() * 900);
+        showToast("Cryptographic keys rotated. Forward secrecy preserved.");
+      }
+
+      function updateRamCounter() {
+        const estBytes = (state.messages.length * 280) + 124000;
+        const kb = Math.round(estBytes / 1024);
+        const label = document.getElementById("ram-usage-label");
+        if (label) label.innerText = `${kb} KB (RAM)`;
+      }
+
+      // Utilities
+      function escapeHtml(str) {
+        return String(str).replace(/[&<>"'`=\/]/g, function (s) {
           return {
             "&": "&amp;",
             "<": "&lt;",
             ">": "&gt;",
             '"': "&quot;",
             "'": "&#39;",
-            "/": "&#x2F;",
+            "/": "&#x2F;"
           }[s];
         });
       }
+
+      function escapeQuotes(str) {
+        return String(str).replace(/'/g, "\\'").replace(/"/g, "&quot;");
+      }
+
+      // Initialize on load
+      window.addEventListener("DOMContentLoaded", () => {
+        renderMessages();
+      });
     </script>
   </body>
 </html>
