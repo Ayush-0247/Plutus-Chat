@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web Request Lifecycle Visualizer</title>
+<style>
+  :root {
+    --bg-card: #ffffff;
+    --border-color: #e5e7eb;
+    --primary: #2563eb;
+    --primary-bg: #eff6ff;
+    --text-main: #1f2937;
+    --text-muted: #6b7280;
+    --node-bg: #f8fafc;
+    --accent: #10b981;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f1f5f9;
+    display: flex;
+    justify-content: center;
+    padding: 30px 16px;
+    margin: 0;
+  }
+
+  .container {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+    max-width: 820px;
+    width: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Canvas Stage */
+  .stage-panel {
+    padding: 36px 24px 20px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .nodes-track {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    position: relative;
+    padding: 24px 10px;
+    box-sizing: border-box;
+  }
+
+  .track-line {
+    position: absolute;
+    top: 50%;
+    left: 40px;
+    right: 40px;
+    height: 2px;
+    background: #e2e8f0;
+    z-index: 1;
+    transform: translateY(-50%);
+  }
+
+  .node-item {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    transition: transform 0.25s ease;
+  }
+
+  .node-icon-box {
+    width: 58px;
+    height: 58px;
+    border-radius: 14px;
+    background: var(--node-bg);
+    border: 2px solid #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .node-item.active .node-icon-box {
+    border-color: var(--primary);
+    background: var(--primary-bg);
+    box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.15);
+    transform: scale(1.08);
+  }
+
+  .node-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  /* Animated Packet */
+  .packet {
+    position: absolute;
+    top: calc(50% - 14px);
+    left: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 12px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+    z-index: 3;
+    transition: left 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Timeline / Breadcrumb */
+  .status-tag {
+    margin-top: 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary);
+    background: var(--primary-bg);
+    padding: 6px 14px;
+    border-radius: 999px;
+  }
+
+  /* Explainer Text */
+  .detail-panel {
+    border-top: 1px solid var(--border-color);
+    padding: 24px 32px 28px;
+    background: #fafafa;
+  }
+
+  .step-narrative {
+    font-family: Georgia, serif;
+    font-size: 18px;
+    color: #334155;
+    line-height: 1.55;
+    text-align: center;
+    min-height: 52px;
+    margin-bottom: 24px;
+  }
+
+  /* Controls Section */
+  .controls-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ctrl-btn {
+    border: 1px solid var(--border-color);
+    background: #fff;
+    border-radius: 10px;
+    padding: 8px 18px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-main);
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    transition: all 0.2s;
+  }
+
+  .ctrl-btn:hover:not(:disabled) {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+  }
+
+  .ctrl-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .ctrl-btn.primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+
+  .ctrl-btn.primary:hover {
+    background: #1d4ed8;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="stage-panel">
+    <div class="nodes-track" id="track">
+      <div class="track-line"></div>
+      
+      <div class="node-item" id="node-0">
+        <div class="node-icon-box">💻</div>
+        <span class="node-title">Browser</span>
+      </div>
+      <div class="node-item" id="node-1">
+        <div class="node-icon-box">🌐</div>
+        <span class="node-title">DNS</span>
+      </div>
+      <div class="node-item" id="node-2">
+        <div class="node-icon-box">⚖️</div>
+        <span class="node-title">Load Balancer</span>
+      </div>
+      <div class="node-item" id="node-3">
+        <div class="node-icon-box">🖥️</div>
+        <span class="node-title">Web Server</span>
+      </div>
+      <div class="node-item" id="node-4">
+        <div class="node-icon-box">⚙️</div>
+        <span class="node-title">Backend</span>
+      </div>
+      <div class="node-item" id="node-5">
+        <div class="node-icon-box">🗄️</div>
+        <span class="node-title">Database</span>
+      </div>
+
+      <div class="packet" id="packet">➔</div>
+    </div>
+
+    <div class="status-tag" id="status-tag">Step 1 of 8</div>
+  </div>
+
+  <div class="detail-panel">
+    <div class="step-narrative" id="step-desc">Loading...</div>
+
+    <div class="controls-row">
+      <button class="ctrl-btn" id="prev-btn" onclick="goStep(-1)">← Back</button>
+      <button class="ctrl-btn primary" id="play-btn" onclick="togglePlay()">Pause</button>
+      <button class="ctrl-btn" id="next-btn" onclick="goStep(1)">Next →</button>
+      <button class="ctrl-btn" onclick="resetFlow()">↺ Reset</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const steps = [
+    { targetNode: 0, tag: "1. URL & Local Cache", text: "User enters the URL. The browser checks local cache and preps for network resolution." },
+    { targetNode: 1, tag: "2. DNS Resolution", text: "Browser queries DNS servers to translate the domain name into an IP address." },
+    { targetNode: 2, tag: "3. TCP Handshake", text: "3-way handshake (SYN, SYN-ACK, ACK) establishes a reliable transmission channel." },
+    { targetNode: 2, tag: "4. TLS Handshake", text: "Cryptographic keys are exchanged over the TCP link to secure the communication." },
+    { targetNode: 3, tag: "5. Forward to Web Server", text: "Encrypted HTTP request hits the Load Balancer and is routed to a Web Server." },
+    { targetNode: 4, tag: "6. Backend App Execution", text: "Web Server passes dynamic workload to Backend App for business logic execution." },
+    { targetNode: 5, tag: "7. Database Query", text: "Backend queries the Database for state records and prepares the HTTP response payload." },
+    { targetNode: 0, tag: "8. Return, Decrypt & Render", text: "HTTP Response flows back to the browser; TLS is decrypted, HTML parsed, and page rendered." }
+  ];
+
+  let current = 0;
+  let timer = null;
+  let isPlaying = true;
+
+  function update() {
+    const s = steps[current];
+    document.getElementById("status-tag").innerText = s.tag;
+    document.getElementById("step-desc").innerText = s.text;
+
+    document.querySelectorAll(".node-item").forEach((n, idx) => {
+      n.classList.toggle("active", idx === s.targetNode);
+    });
+
+    const track = document.getElementById("track");
+    const targetEl = document.getElementById(`node-${s.targetNode}`);
+    const packet = document.getElementById("packet");
+
+    const trackRect = track.getBoundingClientRect();
+    const nodeRect = targetEl.getBoundingClientRect();
+    const targetX = (nodeRect.left - trackRect.left) + (nodeRect.width / 2) - 14;
+
+    packet.style.left = `${targetX}px`;
+    packet.innerText = current === 7 ? "✓" : "➔";
+
+    document.getElementById("prev-btn").disabled = current === 0;
+    document.getElementById("next-btn").disabled = current === steps.length - 1;
+  }
+
+  function goStep(dir) {
+    pause();
+    current = Math.min(Math.max(0, current + dir), steps.length - 1);
+    update();
+  }
+
+  function resetFlow() {
+    current = 0;
+    update();
+  }
+
+  function togglePlay() {
+    if (isPlaying) pause();
+    else play();
+  }
+
+  function play() {
+    isPlaying = true;
+    document.getElementById("play-btn").innerText = "Pause";
+    timer = setInterval(() => {
+      current = (current + 1) % steps.length;
+      update();
+    }, 2200);
+  }
+
+  function pause() {
+    isPlaying = false;
+    document.getElementById("play-btn").innerText = "Play";
+    clearInterval(timer);
+  }
+
+  window.addEventListener("resize", update);
+  window.addEventListener("DOMContentLoaded", () => {
+    update();
+    play();
+  });
+</script>
+
+</body>
+</html>
