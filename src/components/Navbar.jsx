@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Volume2, VolumeX, Radio, Shield, Info, Wifi } from 'lucide-react';
 import { isSoundEnabled, toggleSound } from '../services/soundEffects.js';
+import { ThemeToggle } from './ThemeToggle.jsx';
 
 export const Navbar = ({
   isConnected,
@@ -96,6 +97,9 @@ export const Navbar = ({
               {isConnected ? 'NODE RAM ACTIVE' : 'CONNECTING...'}
             </span>
           </div>
+
+          {/* Dark / Light Mode Toggle */}
+          <ThemeToggle id="navbar-theme-toggle" />
 
           {/* Audio toggle button */}
           <button

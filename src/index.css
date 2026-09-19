@@ -1,5 +1,78 @@
 @import "tailwindcss";
 
+:root {
+  color-scheme: light;
+  --bg-app: #f0f2f5;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #f5f6f8;
+  --bg-subtle: #f0f2f5;
+  --bg-subtle-hover: #e9edef;
+  --text-primary: #111b21;
+  --text-secondary: #54656f;
+  --text-muted: #667781;
+  --border-primary: #e9edef;
+  --border-subtle: #f0f2f5;
+  --accent-primary: #00a884;
+  --accent-hover: #008f6f;
+  --accent-subtle: #e7f7f3;
+  --accent-subtle-text: #008069;
+  --accent-border: rgba(0, 168, 132, 0.3);
+  --chat-wallpaper-bg: #efeae2;
+  --chat-wallpaper-dot: #d1c7b8;
+  --own-bubble-bg: #d9fdd3;
+  --own-bubble-text: #111b21;
+  --own-bubble-border: #c1e8ba;
+  --other-bubble-bg: #ffffff;
+  --other-bubble-text: #111b21;
+  --other-bubble-border: #e9edef;
+  --system-bubble-bg: rgba(255, 255, 255, 0.85);
+  --system-bubble-text: #54656f;
+  --input-bg: #ffffff;
+  --input-border: #e9edef;
+  --input-text: #111b21;
+  --input-placeholder: #667781;
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
+}
+
+[data-theme="dark"],
+.dark {
+  color-scheme: dark;
+  --bg-app: #0c1317;
+  --bg-surface: #111b21;
+  --bg-surface-hover: #202c33;
+  --bg-subtle: #202c33;
+  --bg-subtle-hover: #2a3942;
+  --text-primary: #e9edef;
+  --text-secondary: #8696a0;
+  --text-muted: #667781;
+  --border-primary: #222e35;
+  --border-subtle: #182229;
+  --accent-primary: #00a884;
+  --accent-hover: #02906f;
+  --accent-subtle: #103629;
+  --accent-subtle-text: #25d366;
+  --accent-border: rgba(0, 168, 132, 0.35);
+  --chat-wallpaper-bg: #0b141a;
+  --chat-wallpaper-dot: #1f2c34;
+  --own-bubble-bg: #005c4b;
+  --own-bubble-text: #e9edef;
+  --own-bubble-border: #005c4b;
+  --other-bubble-bg: #202c33;
+  --other-bubble-text: #e9edef;
+  --other-bubble-border: #222e35;
+  --system-bubble-bg: rgba(32, 44, 51, 0.9);
+  --system-bubble-text: #8696a0;
+  --input-bg: #202c33;
+  --input-border: #2a3942;
+  --input-text: #e9edef;
+  --input-placeholder: #8696a0;
+  --scrollbar-track: #0c1317;
+  --scrollbar-thumb: #2a3942;
+  --scrollbar-thumb-hover: #374248;
+}
+
 @layer base {
   html,
   body,
@@ -13,43 +86,55 @@
 
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: #f0f2f5;
-    color: #111b21;
+    background-color: var(--bg-app);
+    color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
   }
 }
 
-/* Custom scrollbars for Geometric Balance theme */
+/* Smooth Theme Transitions - Target background, border, color, shadow without layout shift */
+body,
+header,
+footer,
+aside,
+main,
+button,
+input,
+.theme-toggle-btn {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease, box-shadow 0.2s ease;
+}
+
+/* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--scrollbar-thumb);
   border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Specific scrollbar styling for chat container */
 #messages-container {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
-/* Clean minimalism chat background doodle wallpaper from test.html */
+/* Chat background doodle wallpaper */
 .chat-wallpaper {
-  background-color: #efeae2;
+  background-color: var(--chat-wallpaper-bg);
   background-image:
-    radial-gradient(#d1c7b8 0.75px, transparent 0.75px),
-    radial-gradient(#d1c7b8 0.75px, #efeae2 0.75px);
+    radial-gradient(var(--chat-wallpaper-dot) 0.75px, transparent 0.75px),
+    radial-gradient(var(--chat-wallpaper-dot) 0.75px, var(--chat-wallpaper-bg) 0.75px);
   background-size: 30px 30px;
   background-position:
     0 0,
@@ -70,4 +155,265 @@
 
 .pulse-indicator {
   animation: pulse-dot 2s infinite ease-in-out;
+}
+
+/* =========================================================================
+   DARK MODE COMPREHENSIVE COMPONENT OVERRIDES
+   ========================================================================= */
+
+/* Dark Mode Base Styles */
+[data-theme="dark"] body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+}
+
+/* Surfaces & Containers */
+[data-theme="dark"] .bg-white {
+  background-color: var(--bg-surface) !important;
+}
+
+[data-theme="dark"] .bg-\[\#f0f2f5\] {
+  background-color: var(--bg-app) !important;
+}
+
+[data-theme="dark"] .bg-white\/80 {
+  background-color: var(--system-bubble-bg) !important;
+}
+
+/* Borders & Dividers */
+[data-theme="dark"] .border-\[\#e9edef\] {
+  border-color: var(--border-primary) !important;
+}
+
+[data-theme="dark"] .border-\[\#f0f2f5\] {
+  border-color: var(--border-subtle) !important;
+}
+
+[data-theme="dark"] .border-\[\#cbd5e1\] {
+  border-color: var(--border-primary) !important;
+}
+
+/* Typography */
+[data-theme="dark"] .text-\[\#111b21\] {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .text-\[\#54656f\] {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .text-\[\#667781\] {
+  color: var(--text-muted) !important;
+}
+
+/* Interactive & Hover States */
+[data-theme="dark"] .hover\:bg-\[\#e9edef\]:hover {
+  background-color: var(--bg-subtle-hover) !important;
+}
+
+[data-theme="dark"] .hover\:bg-white:hover {
+  background-color: var(--bg-surface-hover) !important;
+}
+
+[data-theme="dark"] .hover\:text-\[\#111b21\]:hover {
+  color: var(--text-primary) !important;
+}
+
+/* Headers & Navigation Bars */
+[data-theme="dark"] #main_navbar,
+[data-theme="dark"] #top-header,
+[data-theme="dark"] #session-action-bar,
+[data-theme="dark"] #chat-input-bar {
+  background-color: var(--bg-surface) !important;
+  border-color: var(--border-primary) !important;
+}
+
+/* Pills & Badges in Session Action Bar */
+[data-theme="dark"] #session-pill,
+[data-theme="dark"] #passkey-pill,
+[data-theme="dark"] #navbar-session-pill,
+[data-theme="dark"] #line-indicator-badge {
+  background-color: var(--bg-subtle) !important;
+  border-color: var(--border-primary) !important;
+}
+
+[data-theme="dark"] #session-value,
+[data-theme="dark"] #passkey-value {
+  color: var(--text-primary) !important;
+}
+
+/* Chat Input Bar & Field */
+[data-theme="dark"] #message-input {
+  background-color: var(--input-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--input-text) !important;
+}
+
+[data-theme="dark"] #message-input::placeholder {
+  color: var(--input-placeholder) !important;
+}
+
+/* Form Inputs on Home, Create, and Join screens */
+[data-theme="dark"] #create_username_input,
+[data-theme="dark"] #join_session_id_input,
+[data-theme="dark"] #join_username_input {
+  background-color: var(--bg-subtle) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] #create_username_input:focus,
+[data-theme="dark"] #join_session_id_input:focus,
+[data-theme="dark"] #join_username_input:focus {
+  background-color: var(--bg-surface) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+[data-theme="dark"] #join_passkey_input {
+  background-color: #2b2510 !important;
+  border-color: #71580f !important;
+  color: #fef08a !important;
+}
+
+/* Accent Badges (Green & Amber) */
+[data-theme="dark"] .bg-\[\#e7f7f3\] {
+  background-color: var(--accent-subtle) !important;
+  border-color: var(--accent-border) !important;
+  color: var(--accent-subtle-text) !important;
+}
+
+[data-theme="dark"] .bg-\[\#fef9c3\] {
+  background-color: #2b2510 !important;
+  border-color: #71580f !important;
+  color: #fef08a !important;
+}
+
+[data-theme="dark"] .text-\[\#713f12\] {
+  color: #fef08a !important;
+}
+
+[data-theme="dark"] .text-\[\#854d0e\] {
+  color: #fde047 !important;
+}
+
+/* Sent Message Bubble (Own) */
+[data-theme="dark"] .bg-\[\#d9fdd3\] {
+  background-color: var(--own-bubble-bg) !important;
+  border-color: var(--own-bubble-border) !important;
+}
+
+[data-theme="dark"] .bg-\[\#d9fdd3\] .text-\[\#111b21\],
+[data-theme="dark"] .bg-\[\#d9fdd3\] [class*="text-[#111b21]"],
+[data-theme="dark"] .bg-\[\#d9fdd3\] .break-words {
+  color: var(--own-bubble-text) !important;
+}
+
+[data-theme="dark"] .bg-\[\#d9fdd3\] .text-\[\#667781\] {
+  color: #8696a0 !important;
+}
+
+/* Received Message Bubble (Peer) */
+[data-theme="dark"] #dynamic-messages .bg-white {
+  background-color: var(--other-bubble-bg) !important;
+  border-color: var(--other-bubble-border) !important;
+}
+
+[data-theme="dark"] #dynamic-messages .bg-white .text-\[\#111b21\],
+[data-theme="dark"] #dynamic-messages .bg-white .break-words {
+  color: var(--other-bubble-text) !important;
+}
+
+[data-theme="dark"] #dynamic-messages .bg-white .text-\[\#667781\] {
+  color: #8696a0 !important;
+}
+
+/* System Messages */
+[data-theme="dark"] #dynamic-messages .bg-white\/80 {
+  background-color: var(--system-bubble-bg) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* Participant Cards in Active Session Sidebar */
+[data-theme="dark"] [id^="participant-me-"] {
+  background: linear-gradient(to right, #103629, #134233, #154c3a) !important;
+  border-color: rgba(0, 168, 132, 0.6) !important;
+}
+
+[data-theme="dark"] [id^="participant-me-"] .text-\[\#0f5132\] {
+  color: #4ade80 !important;
+}
+
+[data-theme="dark"] [id^="participant-me-"] .text-\[\#008069\] {
+  color: #25d366 !important;
+}
+
+[data-theme="dark"] [id^="participant-peer-"] {
+  background-color: var(--bg-surface) !important;
+  border-color: var(--border-primary) !important;
+}
+
+[data-theme="dark"] [id^="participant-peer-"]:hover {
+  background-color: var(--bg-surface-hover) !important;
+  border-color: #374248 !important;
+}
+
+[data-theme="dark"] [id^="participant-peer-"] .text-\[\#1e293b\] {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] [id^="participant-peer-"] .text-\[\#64748b\] {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] [id^="participant-peer-"] .bg-slate-100 {
+  background-color: var(--bg-subtle) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* Storage Telemetry in Sidebar */
+[data-theme="dark"] #storage-telemetry-box {
+  background-color: var(--bg-surface) !important;
+  border-color: var(--border-primary) !important;
+}
+
+[data-theme="dark"] #storage-telemetry-box .bg-white {
+  background-color: var(--bg-subtle) !important;
+}
+
+/* Peer Access Join Button on Home View */
+[data-theme="dark"] #join_existing_line_button {
+  background-color: #202c33 !important;
+  border: 1px solid #2a3942 !important;
+}
+
+[data-theme="dark"] #join_existing_line_button:hover {
+  background-color: #2a3942 !important;
+}
+
+/* Modals & Dialogs */
+[data-theme="dark"] .bg-white.rounded-2xl,
+[data-theme="dark"] .bg-white.rounded-xl {
+  background-color: var(--bg-surface) !important;
+  border-color: var(--border-primary) !important;
+}
+
+/* QR Code Display Card - Keep white so camera can scan high contrast QR code */
+[data-theme="dark"] #qr-code-wrapper {
+  background-color: #ffffff !important;
+  border-color: #ffffff !important;
+}
+
+/* Verification Terminal Blocks */
+[data-theme="dark"] .bg-\[\#111b21\] {
+  background-color: #0b141a !important;
+  border-color: #202c33 !important;
+}
+
+/* Reaction Badges in Chat */
+[data-theme="dark"] .reaction-badge {
+  background-color: var(--bg-subtle) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
 }

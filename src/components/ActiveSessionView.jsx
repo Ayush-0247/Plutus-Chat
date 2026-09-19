@@ -34,6 +34,7 @@ import { CallWindow } from "./Call/CallWindow.jsx";
 import { FileMessage } from "./File/FileMessage.jsx";
 import { AddDeviceModal } from "./AddDeviceModal.jsx";
 import { MessageReactions } from "./MessageReactions.jsx";
+import { ThemeToggle } from "./ThemeToggle.jsx";
 
 export const ActiveSessionView = ({
   sessionData,
@@ -425,6 +426,9 @@ const creatorMeetTitle = isOwner
               <line x1="12" y1="20" x2="12.01" y2="20" />
             </svg>
           </button>
+
+          {/* Dark / Light Mode Toggle */}
+          <ThemeToggle id="active-session-theme-toggle" />
 
           {/* Audio Speaker Button from Original UI */}
           <button

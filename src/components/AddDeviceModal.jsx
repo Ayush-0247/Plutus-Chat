@@ -153,7 +153,7 @@ export const AddDeviceModal = ({
             {/* TAB 1: QR CODE */}
             {activeTab === "qr" && (
               <div className="flex flex-col items-center text-center space-y-3.5">
-                <div className="p-3 bg-white rounded-2xl border-2 border-[#e9edef] shadow-2xs inline-block">
+                <div id="qr-code-wrapper" className="p-3 bg-white rounded-2xl border-2 border-[#e9edef] shadow-2xs inline-block">
                   {qrDataUrl ? (
                     <img
                       src={qrDataUrl}
