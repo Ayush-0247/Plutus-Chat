@@ -10,12 +10,14 @@ import {
   Lock,
   Smartphone,
   ExternalLink,
+  Bell,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export const HomeView = ({
   onCreateClick,
   onJoinClick,
+  onNotificationsClick,
   onOpenArchitecture,
 }) => {
   return (
@@ -146,6 +148,42 @@ export const HomeView = ({
             className="mt-6 w-full py-3 px-4 bg-[#111b21] hover:bg-[#2a3942] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-[0.98]"
           >
             <span>ENTER PASSKEY & JOIN</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </motion.div>
+
+        {/* Notifications & Text Channel Card */}
+        <motion.div
+          whileHover={{ y: -3 }}
+          transition={{ duration: 0.15 }}
+          className="md:col-span-2 bg-white rounded-2xl p-6 sm:p-7 border border-[#e9edef] shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5"
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-[#00a884] flex items-center justify-center text-white shadow-2xs shrink-0">
+              <Bell className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-[#111b21] tracking-tight">
+                  Notifications & Text Channel
+                </h2>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#e7f7f3] text-[#008069] border border-[#00a884]/20 uppercase tracking-wider">
+                  NEW FEATURE
+                </span>
+              </div>
+              <p className="text-xs text-[#54656f] leading-relaxed">
+                Registered email identity with cryptographic passkeys, receiver-controlled privacy gates, and self-destructing view-once notifications.
+              </p>
+            </div>
+          </div>
+
+          <button
+            id="open_notifications_button"
+            onClick={onNotificationsClick}
+            className="w-full sm:w-auto shrink-0 py-3 px-6 bg-[#00a884] hover:bg-[#008f6f] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-[0.98]"
+          >
+            <Bell className="w-4 h-4" />
+            <span>NOTIFICATIONS</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </motion.div>

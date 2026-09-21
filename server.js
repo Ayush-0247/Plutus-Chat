@@ -26,8 +26,17 @@ import { initSessionCleanup } from './src/server/utils/sessionCleanup.js';
 
 import { Session } from './src/server/models/Session.js';
 import { SessionBan } from './src/server/models/SessionBan.js';
+import notificationRoutes from './src/server/routes/notificationRoutes.js';
 
 const app = express();
+
+// Body parsers for REST API routes
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// Dedicated Notification / Text Channel API routes
+app.use('/api/notifications', notificationRoutes);
+
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: {
@@ -153,6 +162,7 @@ async function executeHardDestruction(sessionId) {
 
 // REST endpoints
 app.use(express.json());
+app.use('/api/notifications', notificationRoutes);
 
 app.get('/api/health', async (req, res) => {
   const dbStatus = getConnectionStatus();

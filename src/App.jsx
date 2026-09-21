@@ -9,6 +9,7 @@ import { EndingCountdownModal } from './components/EndingCountdownModal.jsx';
 import { DestroyedScreen } from './components/DestroyedScreen.jsx';
 import { KickedScreen } from './components/KickedScreen.jsx';
 import { ArchitectureModal } from './components/ArchitectureModal.jsx';
+import { NotificationsView } from './components/Notifications/NotificationsView.jsx';
 import { CallInvitationModal } from './components/Call/CallInvitationModal.jsx';
 import {
   playMessageReceivedSound,
@@ -129,7 +130,7 @@ export default function App() {
     setActiveSessionAndRef(null);
   }, [teardownCallState]);
 
-  // Check URL parameters on mount
+  // Check URL parameters and path on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const searchParams = new URLSearchParams(window.location.search);
@@ -139,8 +140,37 @@ export default function App() {
         setUrlSessionId(joinId.toUpperCase());
         if (passkey) setUrlPasskey(passkey.toUpperCase());
         setUiState('JOINING');
+      } else if (window.location.pathname === '/notifications' || window.location.hash === '#notifications') {
+        setUiState('NOTIFICATIONS');
       }
     }
+  }, []);
+
+  // Handle browser back/forward history navigation for notifications
+  useEffect(() => {
+    const handlePopState = () => {
+      if (window.location.pathname === '/notifications' || window.location.hash === '#notifications') {
+        setUiState('NOTIFICATIONS');
+      } else if (uiState === 'NOTIFICATIONS') {
+        setUiState('HOME');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [uiState]);
+
+  const navigateToNotifications = useCallback(() => {
+    try {
+      window.history.pushState(null, '', '/notifications');
+    } catch (e) {}
+    setUiState('NOTIFICATIONS');
+  }, []);
+
+  const navigateBackFromNotifications = useCallback(() => {
+    try {
+      window.history.pushState(null, '', '/');
+    } catch (e) {}
+    setUiState('HOME');
   }, []);
 
   // Initialize and synchronize WebRTCMeshManager when session is active
@@ -923,8 +953,13 @@ export default function App() {
           <HomeView
             onCreateClick={() => setUiState('CREATING')}
             onJoinClick={() => setUiState('JOINING')}
+            onNotificationsClick={navigateToNotifications}
             onOpenArchitecture={() => setShowArchitecture(true)}
           />
+        )}
+
+        {uiState === 'NOTIFICATIONS' && (
+          <NotificationsView onBackToHome={navigateBackFromNotifications} />
         )}
 
         {uiState === 'CREATING' && (
