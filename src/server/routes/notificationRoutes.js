@@ -86,12 +86,25 @@ router.post('/auth/login', authLimiter, async (req, res) => {
     }
 
     const normEmail = normalizeEmail(email);
-    const user = await authenticateUser(normEmail, passkey);
+    let user = await authenticateUser(normEmail, passkey);
     if (!user) {
       return res.status(401).json({
         success: false,
         error: 'Authentication failed. Please verify your email and passkey.',
       });
+    }
+
+    // Auto-heal legacy users who never explicitly disabled messages
+    const isExplicitlyDisabled =
+      user.channelEnabled === false &&
+      Boolean(user.channelDisabledAt) &&
+      (!user.channelCreatedAt || new Date(user.channelDisabledAt) > new Date(user.channelCreatedAt));
+
+    if (!isExplicitlyDisabled && !user.channelEnabled) {
+      try {
+        await setChannelStatus(normEmail, null, true, true);
+        user = { ...user, channelEnabled: true };
+      } catch (e) {}
     }
 
     const session = createNotificationSession(normEmail);
@@ -152,12 +165,25 @@ router.post('/auth/continue', authLimiter, async (req, res) => {
     const isProd = process.env.NODE_ENV === 'production';
 
     if (existing) {
-      const user = await authenticateUser(normEmail, passkey);
+      let user = await authenticateUser(normEmail, passkey);
       if (!user) {
         return res.status(401).json({
           success: false,
           error: 'Incorrect email or passkey.',
         });
+      }
+
+      // If user never explicitly disabled messages or allowMessages was checked, activate channel
+      const isExplicitlyDisabled =
+        user.channelEnabled === false &&
+        Boolean(user.channelDisabledAt) &&
+        (!user.channelCreatedAt || new Date(user.channelDisabledAt) > new Date(user.channelCreatedAt));
+
+      if ((allowMessages || !isExplicitlyDisabled) && !user.channelEnabled) {
+        try {
+          await setChannelStatus(normEmail, null, true, true);
+          user = { ...user, channelEnabled: true };
+        } catch (e) {}
       }
 
       const session = createNotificationSession(normEmail);
@@ -176,15 +202,8 @@ router.post('/auth/continue', authLimiter, async (req, res) => {
         message: 'Signed in successfully.',
       });
     } else {
-      await registerNotificationUser({ email: normEmail, passkey });
-
-      if (allowMessages) {
-        try {
-          await setChannelStatus(normEmail, null, true, true);
-        } catch (e) {
-          console.warn('[Continue] Channel init error:', e.message);
-        }
-      }
+      const isEnabled = allowMessages !== false;
+      await registerNotificationUser({ email: normEmail, passkey, channelEnabled: isEnabled });
 
       const session = createNotificationSession(normEmail);
       res.setHeader(
@@ -196,7 +215,7 @@ router.post('/auth/continue', authLimiter, async (req, res) => {
         success: true,
         isNewUser: true,
         email: normEmail,
-        channelEnabled: Boolean(allowMessages),
+        channelEnabled: isEnabled,
         token: session.token,
         expiresInMs: session.expiresInMs,
         message: 'Account created and signed in.',
@@ -222,12 +241,25 @@ router.get('/auth/session', async (req, res) => {
     });
   }
 
-  const user = await findUserByEmail(req.sessionEmail);
+  let user = await findUserByEmail(req.sessionEmail);
   if (!user) {
     return res.json({
       success: true,
       authenticated: false,
     });
+  }
+
+  // Auto-heal legacy users who never explicitly disabled messages
+  const isExplicitlyDisabled =
+    user.channelEnabled === false &&
+    Boolean(user.channelDisabledAt) &&
+    (!user.channelCreatedAt || new Date(user.channelDisabledAt) > new Date(user.channelCreatedAt));
+
+  if (!isExplicitlyDisabled && !user.channelEnabled) {
+    try {
+      await setChannelStatus(user.email, null, true, true);
+      user = { ...user, channelEnabled: true };
+    } catch (e) {}
   }
 
   return res.json({
@@ -259,7 +291,7 @@ router.post('/auth/logout', async (req, res) => {
  */
 router.post('/register', registerLimiter, async (req, res) => {
   try {
-    const { email, passkey } = req.body || {};
+    const { email, passkey, allowMessages = true } = req.body || {};
     if (!email || !passkey) {
       return res.status(400).json({
         success: false,
@@ -267,11 +299,16 @@ router.post('/register', registerLimiter, async (req, res) => {
       });
     }
 
-    const result = await registerNotificationUser({ email, passkey });
+    const result = await registerNotificationUser({
+      email,
+      passkey,
+      channelEnabled: allowMessages !== false,
+    });
     return res.status(201).json({
       success: true,
-      message: 'Notification account created. You can now create/enable your Text Channel.',
+      message: 'Notification account created. Messages are active.',
       email: result.email,
+      channelEnabled: result.channelEnabled,
     });
   } catch (err) {
     return res.status(400).json({
@@ -528,10 +565,25 @@ router.post('/messages', authLimiter, async (req, res) => {
       });
     }
 
+    const normEffective = normalizeEmail(effectiveEmail);
+    let user = await findUserByEmail(normEffective);
+    if (user && !user.channelEnabled) {
+      const isExplicitlyDisabled =
+        Boolean(user.channelDisabledAt) &&
+        (!user.channelCreatedAt || new Date(user.channelDisabledAt) > new Date(user.channelCreatedAt));
+      if (!isExplicitlyDisabled) {
+        try {
+          await setChannelStatus(normEffective, null, true, true);
+          user = { ...user, channelEnabled: true };
+        } catch (e) {}
+      }
+    }
+
     const messages = await getReceivedMessages(effectiveEmail, passkey, Boolean(req.sessionEmail));
     return res.json({
       success: true,
       messages,
+      channelEnabled: user ? Boolean(user.channelEnabled) : true,
     });
   } catch (err) {
     return res.status(401).json({

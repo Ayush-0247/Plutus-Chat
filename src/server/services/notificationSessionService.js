@@ -117,6 +117,24 @@ export function destroyAllUserSessions(email) {
   }
 }
 
+/**
+ * Checks if a user currently has at least one active, non-expired session.
+ * @param {string} email
+ * @returns {boolean}
+ */
+export function hasActiveSession(email) {
+  if (!email || typeof email !== 'string') return false;
+  const normEmail = email.trim().toLowerCase();
+  const tokens = userSessionIndex.get(normEmail);
+  if (!tokens || tokens.size === 0) return false;
+
+  for (const token of tokens) {
+    const res = verifyNotificationSession(token);
+    if (res.valid) return true;
+  }
+  return false;
+}
+
 // Periodic cleanup every 5 minutes for expired sessions
 setInterval(() => {
   const now = Date.now();

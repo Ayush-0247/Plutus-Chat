@@ -4,7 +4,7 @@ import { NotificationUser } from '../models/NotificationUser.js';
 import { NotificationMessage } from '../models/NotificationMessage.js';
 import { isDatabaseConnected } from '../config/database.js';
 import { isAuthLockedOut, recordFailedAuth, clearFailedAuth } from '../middleware/rateLimiter.js';
-import { destroyAllUserSessions } from './notificationSessionService.js';
+import { destroyAllUserSessions, hasActiveSession } from './notificationSessionService.js';
 
 const SALT_ROUNDS = 10;
 
@@ -37,9 +37,9 @@ export async function verifyPasskey(candidatePasskey, passkeyHash) {
 
 /**
  * Registers a new notification user with email and hashed passkey.
- * By default, channelEnabled is false.
+ * By default, channelEnabled is true so registered users can receive messages immediately.
  */
-export async function registerNotificationUser({ email, passkey }) {
+export async function registerNotificationUser({ email, passkey, channelEnabled = true }) {
   const normEmail = normalizeEmail(email);
 
   if (!isValidEmail(normEmail)) {
@@ -58,13 +58,16 @@ export async function registerNotificationUser({ email, passkey }) {
 
   const passkeyHash = await hashPasskey(passkey);
   const now = new Date();
+  const isEnabled = channelEnabled !== false;
 
   if (isDatabaseConnected()) {
     try {
       const user = await NotificationUser.create({
         email: normEmail,
         passkeyHash,
-        channelEnabled: false,
+        channelEnabled: isEnabled,
+        channelCreatedAt: isEnabled ? now : null,
+        channelDisabledAt: isEnabled ? null : now,
         createdAt: now,
         updatedAt: now,
       });
@@ -89,7 +92,9 @@ export async function registerNotificationUser({ email, passkey }) {
     id,
     email: normEmail,
     passkeyHash,
-    channelEnabled: false,
+    channelEnabled: isEnabled,
+    channelCreatedAt: isEnabled ? now : null,
+    channelDisabledAt: isEnabled ? null : now,
     createdAt: now,
     updatedAt: now,
   };
@@ -98,7 +103,7 @@ export async function registerNotificationUser({ email, passkey }) {
   return {
     id,
     email: normEmail,
-    channelEnabled: false,
+    channelEnabled: isEnabled,
     createdAt: now,
   };
 }
@@ -181,7 +186,7 @@ export async function setChannelStatus(email, passkey, enabled, isPreAuthenticat
   const updatePayload = {
     channelEnabled: Boolean(enabled),
     updatedAt: now,
-    ...(enabled ? { channelCreatedAt: now } : { channelDisabledAt: now }),
+    ...(enabled ? { channelCreatedAt: now, channelDisabledAt: null } : { channelDisabledAt: now }),
   };
 
   if (isDatabaseConnected()) {
@@ -208,8 +213,12 @@ export async function setChannelStatus(email, passkey, enabled, isPreAuthenticat
   if (memUser) {
     memUser.channelEnabled = Boolean(enabled);
     memUser.updatedAt = now;
-    if (enabled) memUser.channelCreatedAt = now;
-    else memUser.channelDisabledAt = now;
+    if (enabled) {
+      memUser.channelCreatedAt = now;
+      memUser.channelDisabledAt = null;
+    } else {
+      memUser.channelDisabledAt = now;
+    }
   }
 
   return {
@@ -253,10 +262,34 @@ export async function sendNotificationMessage({
   }
 
   // 2. Validate receiver exists and channel is active.
-  // We use the same error message for both cases to prevent email enumeration attacks (Addendum #9).
+  // We use the same error message for both cases to prevent email enumeration attacks.
   const receiver = await findUserByEmail(normReceiver);
-  if (!receiver || !receiver.channelEnabled) {
-    throw new Error('This user is currently not accepting notifications.');
+  if (!receiver) {
+    throw new Error('This user is currently not accepting messages.');
+  }
+
+  // Check if receiver is accepting messages:
+  // A receiver accepts messages if:
+  // 1) channelEnabled is true, OR
+  // 2) receiver is currently logged in with an active session, OR
+  // 3) receiver never explicitly disabled incoming messages (legacy registration or missing channelDisabledAt)
+  const isExplicitlyDisabled =
+    receiver.channelEnabled === false &&
+    Boolean(receiver.channelDisabledAt) &&
+    (!receiver.channelCreatedAt || new Date(receiver.channelDisabledAt) > new Date(receiver.channelCreatedAt));
+
+  const hasActive = hasActiveSession(normReceiver);
+  const isAccepting = receiver.channelEnabled || hasActive || !isExplicitlyDisabled;
+
+  if (!isAccepting) {
+    throw new Error('This user is currently not accepting messages.');
+  }
+
+  // Auto-heal receiver's channel state in database if it was previously false
+  if (!receiver.channelEnabled && isAccepting) {
+    setChannelStatus(normReceiver, null, true, true).catch((e) => {
+      console.warn('[sendNotificationMessage] auto-heal receiver error:', e.message);
+    });
   }
 
   // 4. Validate content

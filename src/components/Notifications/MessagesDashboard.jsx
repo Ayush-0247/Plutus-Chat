@@ -121,6 +121,26 @@ export const MessagesDashboard = ({
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
   };
 
+  const handleEnableMessagesQuickly = async () => {
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
+      const res = await fetch('/api/notifications/channel/create', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ email: sessionEmail }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setChannelEnabled(true);
+        setSuccessMessage('Incoming messages enabled! You can now receive messages.');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      }
+    } catch (e) {
+      setIsSettingsOpen(true);
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto py-6 sm:py-8 px-4 space-y-6">
       {/* Top App Bar */}
@@ -205,17 +225,25 @@ export const MessagesDashboard = ({
 
       {/* Privacy Notice Banner if Messages Disabled */}
       {channelEnabled === false && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between gap-3">
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
             <span>Incoming messages are currently paused in your Privacy settings.</span>
           </div>
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="text-[#008069] hover:underline font-bold shrink-0 cursor-pointer"
-          >
-            Settings
-          </button>
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <button
+              onClick={handleEnableMessagesQuickly}
+              className="px-3 py-1.5 bg-[#00a884] hover:bg-[#008f6f] text-white font-bold rounded-xl text-xs cursor-pointer shadow-2xs transition-all active:scale-95"
+            >
+              Resume Incoming Messages
+            </button>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="px-2.5 py-1.5 text-[#54656f] hover:text-[#111b21] hover:bg-amber-100/60 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+            >
+              Settings
+            </button>
+          </div>
         </div>
       )}
 

@@ -15,7 +15,7 @@ const notificationUserSchema = new mongoose.Schema({
   },
   channelEnabled: {
     type: Boolean,
-    default: false,
+    default: true,
   },
   lastAuthenticatedAt: {
     type: Date,
