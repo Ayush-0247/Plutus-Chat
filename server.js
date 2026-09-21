@@ -161,8 +161,6 @@ async function executeHardDestruction(sessionId) {
 }
 
 // REST endpoints
-app.use(express.json());
-app.use('/api/notifications', notificationRoutes);
 
 app.get('/api/health', async (req, res) => {
   const dbStatus = getConnectionStatus();

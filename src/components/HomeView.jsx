@@ -8,9 +8,9 @@ import {
   Trash2,
   Video,
   Lock,
-  Smartphone,
   ExternalLink,
-  Bell,
+  MessageSquare,
+  Mail,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -18,29 +18,29 @@ export const HomeView = ({
   onCreateClick,
   onJoinClick,
   onNotificationsClick,
+  onMessagesClick,
   onOpenArchitecture,
 }) => {
+  const handleOpenMessages = onMessagesClick || onNotificationsClick;
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 sm:py-12 space-y-8 sm:space-y-10 font-sans">
       {/* Hero Header */}
-      <div className="text-center space-y-3.5 max-w-2xl mx-auto">
-        {/* <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-[#e9edef] text-xs font-semibold text-[#111b21] shadow-2xs">
-          <span className="w-2 h-2 rounded-full bg-[#00a884] pulse-indicator" />
-          <span className="text-[#54656f]">ZERO-PERSISTENCE PROTOCOL</span>
-          <span className="text-[#e9edef]">•</span>
-          <span className="text-[#008069] font-bold">NODE.JS RAM ONLY</span>
-        </div> */}
+      <div className="text-center space-y-3 max-w-xl mx-auto">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#e9edef] text-xs font-semibold text-[#111b21] shadow-2xs mb-1">
+          <span className="w-2 h-2 rounded-full bg-[#00a884]" />
+          <span className="text-[#54656f] font-mono uppercase tracking-wider text-[11px]">
+            EPHEMERAL PROTOCOL
+          </span>
+        </div>
 
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-[#111b21] tracking-tight">
-          Real-Time Ephemeral <br />
-          <span className="text-[#00a884]">Communication Line</span>
+        <h1 className="text-4xl sm:text-5xl font-black text-[#111b21] tracking-tight uppercase">
+          PLUTUS
         </h1>
 
-        {/* <p className="text-xs sm:text-sm text-[#54656f] leading-relaxed max-w-xl mx-auto">
-          Zero database persistence. Complete in-memory session lifecycle in
-          volatile server RAM. Protected by cryptographic links & passkeys.
-          Hard-destroyed upon owner departure.
-        </p> */}
+        <p className="text-sm sm:text-base font-medium text-[#54656f]">
+          Secure. Temporary. Private.
+        </p>
       </div>
 
       {/* Main Action Cards */}
@@ -63,30 +63,12 @@ export const HomeView = ({
 
             <div>
               <h2 className="text-lg font-bold text-[#111b21] tracking-tight">
-                Start Secure Line
+                Create Session
               </h2>
-              {/* <p className="text-xs text-[#54656f] mt-1 leading-relaxed">
-                Initialize as <strong>Owner</strong>.
-                 Get cryptographic credentials,
-                QR code for instant device joining, manage participants, kick unwanted users,
-                and control hard-wipe termination.
-              </p> */}
+              <p className="text-xs text-[#54656f] mt-1 leading-relaxed">
+                Initialize a temporary P2P line. Receive credentials, QR code, audio/video calling, and hard-purge controls.
+              </p>
             </div>
-
-            {/* <div className="pt-2 border-t border-[#f0f2f5] space-y-1.5 text-xs text-[#54656f]">
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#00a884]" />
-                <span>Encrypted P2P Voice & Video Calls</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#00a884]" />
-                <span>Instant QR Scanner for Phones</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#00a884]" />
-                <span>Session-Scoped Irrevocable Bans</span>
-              </div>
-            </div> */}
           </div>
 
           <button
@@ -117,29 +99,12 @@ export const HomeView = ({
 
             <div>
               <h2 className="text-lg font-bold text-[#111b21] tracking-tight">
-                Join Existing Line
+                Join Session
               </h2>
-              {/* <p className="text-xs text-[#54656f] mt-1 leading-relaxed">
-                Connect using an active Session ID and secret passkey, or simply
-                scan an owner's QR code. Enjoy zero-trace communication with voluntary
-                departure rights.
-              </p> */}
+              <p className="text-xs text-[#54656f] mt-1 leading-relaxed">
+                Connect to an existing active line using Session ID and secret passkey, or scan an owner's QR code.
+              </p>
             </div>
-
-            {/* <div className="pt-2 border-t border-[#f0f2f5] space-y-1.5 text-xs text-[#54656f]">
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                <span>Dual-Factor Passkey Verification</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                <span>Ephemeral File & Photo Transfers</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                <span>Voluntary Disconnect Anytime</span>
-              </div>
-            </div> */}
           </div>
 
           <button
@@ -147,12 +112,12 @@ export const HomeView = ({
             onClick={onJoinClick}
             className="mt-6 w-full py-3 px-4 bg-[#111b21] hover:bg-[#2a3942] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-[0.98]"
           >
-            <span>ENTER PASSKEY & JOIN</span>
+            <span>JOIN SESSION</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </motion.div>
 
-        {/* Notifications & Text Channel Card */}
+        {/* Messages Card */}
         <motion.div
           whileHover={{ y: -3 }}
           transition={{ duration: 0.15 }}
@@ -160,30 +125,30 @@ export const HomeView = ({
         >
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-xl bg-[#00a884] flex items-center justify-center text-white shadow-2xs shrink-0">
-              <Bell className="w-6 h-6" />
+              <MessageSquare className="w-6 h-6" />
             </div>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-[#111b21] tracking-tight">
-                  Notifications & Text Channel
+                <h2 className="text-lg font-bold text-[#111b21] tracking-tight flex items-center gap-1.5">
+                  <span>💬 Messages</span>
                 </h2>
                 <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#e7f7f3] text-[#008069] border border-[#00a884]/20 uppercase tracking-wider">
-                  NEW FEATURE
+                  PRIVATE INBOX
                 </span>
               </div>
               <p className="text-xs text-[#54656f] leading-relaxed">
-                Registered email identity with cryptographic passkeys, receiver-controlled privacy gates, and self-destructing view-once notifications.
+                Send and receive private messages using your email identity, with self-destructing view-once capability.
               </p>
             </div>
           </div>
 
           <button
-            id="open_notifications_button"
-            onClick={onNotificationsClick}
+            id="open_messages_button"
+            onClick={handleOpenMessages}
             className="w-full sm:w-auto shrink-0 py-3 px-6 bg-[#00a884] hover:bg-[#008f6f] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-[0.98]"
           >
-            <Bell className="w-4 h-4" />
-            <span>NOTIFICATIONS</span>
+            <Mail className="w-4 h-4" />
+            <span>MESSAGES</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </motion.div>
@@ -216,7 +181,7 @@ export const HomeView = ({
               <span>Volatile RAM</span>
             </div>
             <p className="text-[11px] text-[#54656f] leading-snug">
-              Messages and files exist only in server memory and are never saved to disk.
+              Session state exists in server RAM and is never committed to storage disks.
             </p>
           </div>
 
@@ -226,7 +191,7 @@ export const HomeView = ({
               <span>P2P WebRTC</span>
             </div>
             <p className="text-[11px] text-[#54656f] leading-snug">
-              Voice and video streams connect directly between browsers without intermediate media storage.
+              Voice and video streams connect directly between browsers without intermediate storage.
             </p>
           </div>
 
@@ -236,7 +201,7 @@ export const HomeView = ({
               <span>Hard Purge</span>
             </div>
             <p className="text-[11px] text-[#54656f] leading-snug">
-              When the owner departs, all state, tokens, and participant buffers are completely erased.
+              When the owner departs, all state, tokens, and participant buffers are wiped.
             </p>
           </div>
         </div>

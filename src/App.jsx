@@ -140,16 +140,26 @@ export default function App() {
         setUrlSessionId(joinId.toUpperCase());
         if (passkey) setUrlPasskey(passkey.toUpperCase());
         setUiState('JOINING');
-      } else if (window.location.pathname === '/notifications' || window.location.hash === '#notifications') {
+      } else if (
+        window.location.pathname === '/messages' ||
+        window.location.hash === '#messages' ||
+        window.location.pathname === '/notifications' ||
+        window.location.hash === '#notifications'
+      ) {
         setUiState('NOTIFICATIONS');
       }
     }
   }, []);
 
-  // Handle browser back/forward history navigation for notifications
+  // Handle browser back/forward history navigation for messages / notifications
   useEffect(() => {
     const handlePopState = () => {
-      if (window.location.pathname === '/notifications' || window.location.hash === '#notifications') {
+      if (
+        window.location.pathname === '/messages' ||
+        window.location.hash === '#messages' ||
+        window.location.pathname === '/notifications' ||
+        window.location.hash === '#notifications'
+      ) {
         setUiState('NOTIFICATIONS');
       } else if (uiState === 'NOTIFICATIONS') {
         setUiState('HOME');
@@ -161,7 +171,7 @@ export default function App() {
 
   const navigateToNotifications = useCallback(() => {
     try {
-      window.history.pushState(null, '', '/notifications');
+      window.history.pushState(null, '', '/messages');
     } catch (e) {}
     setUiState('NOTIFICATIONS');
   }, []);
@@ -953,6 +963,7 @@ export default function App() {
           <HomeView
             onCreateClick={() => setUiState('CREATING')}
             onJoinClick={() => setUiState('JOINING')}
+            onMessagesClick={navigateToNotifications}
             onNotificationsClick={navigateToNotifications}
             onOpenArchitecture={() => setShowArchitecture(true)}
           />

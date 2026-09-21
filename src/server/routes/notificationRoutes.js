@@ -120,6 +120,97 @@ router.post('/auth/login', authLimiter, async (req, res) => {
 });
 
 /**
+ * Combined Seamless Authentication: Continue (Login or Auto-Register)
+ * POST /api/notifications/auth/continue
+ */
+router.post('/auth/continue', authLimiter, async (req, res) => {
+  try {
+    const { email, passkey, allowMessages = true } = req.body || {};
+    if (!email || !passkey) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email and passkey are required.',
+      });
+    }
+
+    const normEmail = normalizeEmail(email);
+    if (!normEmail || !normEmail.includes('@')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter a valid email address.',
+      });
+    }
+
+    if (passkey.trim().length < 4) {
+      return res.status(400).json({
+        success: false,
+        error: 'Passkey must be at least 4 characters long.',
+      });
+    }
+
+    const existing = await findUserByEmail(normEmail);
+    const isProd = process.env.NODE_ENV === 'production';
+
+    if (existing) {
+      const user = await authenticateUser(normEmail, passkey);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: 'Incorrect email or passkey.',
+        });
+      }
+
+      const session = createNotificationSession(normEmail);
+      res.setHeader(
+        'Set-Cookie',
+        `notification_session=${encodeURIComponent(session.token)}; Path=/; HttpOnly; SameSite=Lax${isProd ? '; Secure' : ''}; Max-Age=1800`
+      );
+
+      return res.json({
+        success: true,
+        isNewUser: false,
+        email: normEmail,
+        channelEnabled: Boolean(user.channelEnabled),
+        token: session.token,
+        expiresInMs: session.expiresInMs,
+        message: 'Signed in successfully.',
+      });
+    } else {
+      await registerNotificationUser({ email: normEmail, passkey });
+
+      if (allowMessages) {
+        try {
+          await setChannelStatus(normEmail, null, true, true);
+        } catch (e) {
+          console.warn('[Continue] Channel init error:', e.message);
+        }
+      }
+
+      const session = createNotificationSession(normEmail);
+      res.setHeader(
+        'Set-Cookie',
+        `notification_session=${encodeURIComponent(session.token)}; Path=/; HttpOnly; SameSite=Lax${isProd ? '; Secure' : ''}; Max-Age=1800`
+      );
+
+      return res.status(201).json({
+        success: true,
+        isNewUser: true,
+        email: normEmail,
+        channelEnabled: Boolean(allowMessages),
+        token: session.token,
+        expiresInMs: session.expiresInMs,
+        message: 'Account created and signed in.',
+      });
+    }
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'Authentication failed.',
+    });
+  }
+});
+
+/**
  * Session Authentication: Verify active session (Addendum #6 & #7)
  * GET /api/notifications/auth/session
  */
