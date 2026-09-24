@@ -39,7 +39,24 @@ jobs:
         run: npm audit --audit-level=high
 
       - name: Build frontend and server bundle
-        run: npm run build
+        run: |
+          echo "Starting frontend build (Vite)..."
+          npx vite build 2>&1 | tee vite.log || {
+            echo "### Vite Build Failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat vite.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
+
+          echo "Starting server bundle (esbuild)..."
+          npx esbuild server.js --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs 2>&1 | tee esbuild.log || {
+            echo "### Server Build Failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat esbuild.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
 
       - name: Verify build artifacts
         run: |
