@@ -311,6 +311,25 @@ The project includes `render.yaml` for one-click deployment:
    - `NODE_ENV=production`
 5. Deploy
 
+### CI/CD Pipeline (GitHub Actions)
+
+This repository includes an automated CI/CD workflow ([`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml)):
+
+- **Continuous Integration (CI)**: Runs on every push and pull request to `main`.
+  - Sets up Node.js 22 LTS with dependency caching.
+  - Installs clean dependencies with `npm ci --include=dev`.
+  - Runs linter checks (`npm run lint`).
+  - Audits security vulnerabilities (`npm audit --audit-level=high`).
+  - Executes production build (`vite build` + `esbuild server.js`).
+  - Verifies presence of both client (`dist/index.html`) and server (`dist/server.cjs`) bundles.
+  - Archives build artifacts for 5 days.
+- **Continuous Deployment (CD)**: Triggers deployment to Render upon successful CI on the `main` branch.
+  - **Setup**:
+    1. In Render: Go to your Web Service **Settings** → **Deploy Hook** → copy the URL.
+    2. In GitHub: Go to **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
+    3. Name: `RENDER_DEPLOY_HOOK_URL`, Value: your copied Deploy Hook URL.
+    *(Note: If the secret is not yet configured, the CD job cleanly informs you without failing the CI pipeline).*
+
 ### Production Build (Manual)
 
 ```bash

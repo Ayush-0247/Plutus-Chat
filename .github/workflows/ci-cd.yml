@@ -1,0 +1,91 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build & Verify (CI)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Security audit check
+        run: npm audit --audit-level=high
+
+      - name: Build frontend and server bundle
+        run: npm run build
+
+      - name: Verify build artifacts
+        run: |
+          if [ ! -f "dist/index.html" ] || [ ! -f "dist/server.cjs" ]; then
+            echo "::error::Build verification failed! dist/index.html or dist/server.cjs is missing."
+            exit 1
+          fi
+          echo "Build artifacts verified successfully:"
+          ls -la dist
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plutus-chat-dist
+          path: dist/
+          retention-days: 5
+
+  deploy:
+    name: Deploy to Render (CD)
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+
+    steps:
+      - name: Trigger Render Deployment
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL secret is not configured in repository settings."
+            echo "CI build and validation passed successfully!"
+            echo "To enable automated deployment on push to main:"
+            echo "1. Go to your Render Dashboard -> Your Service (plutus-chat) -> Settings"
+            echo "2. Copy the 'Deploy Hook' URL"
+            echo "3. In GitHub repo Settings -> Secrets and variables -> Actions, add a secret named RENDER_DEPLOY_HOOK_URL"
+          else
+            echo "Triggering Render deployment..."
+            RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
+
+            echo "Render API Response HTTP status: $HTTP_CODE"
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "Deployment successfully triggered on Render!"
+            else
+              echo "::error::Failed to trigger Render deployment. HTTP Code: $HTTP_CODE, Body: $BODY"
+              exit 1
+            fi
+          fi
