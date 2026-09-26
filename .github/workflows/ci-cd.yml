@@ -1,10 +1,11 @@
+```yaml
 name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -27,10 +28,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+          cache: npm
 
       - name: Install dependencies
-        run: npm install --include=dev
+        run: npm ci
 
       - name: Run linter
         run: npm run lint
@@ -38,34 +39,68 @@ jobs:
       - name: Security audit check
         run: npm audit --audit-level=high
 
-      - name: Build frontend and server bundle
+      - name: Clean previous build
         run: |
-          echo "Starting frontend build (Vite)..."
-          npx vite build 2>&1 | tee vite.log || {
-            echo "### Vite Build Failed" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat vite.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            exit 1
-          }
+          rm -rf dist
+          mkdir -p dist
 
-          echo "Starting server bundle (esbuild)..."
-          npx esbuild server.js --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs 2>&1 | tee esbuild.log || {
-            echo "### Server Build Failed" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat esbuild.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+      - name: Build frontend with Vite
+        run: |
+          echo "Starting frontend build..."
+          npx vite build
+
+          echo ""
+          echo "Vite build completed."
+          echo "Contents of dist:"
+          ls -lah dist
+
+      - name: Verify frontend build
+        run: |
+          if [ ! -f "dist/index.html" ]; then
+            echo "::error::Vite build completed but dist/index.html was not found."
+            echo "Searching for index.html:"
+            find . -maxdepth 4 -type f -name "index.html" -print
             exit 1
-          }
+          fi
+
+          echo "Frontend build verified successfully."
+          ls -lah dist/index.html
+
+      - name: Build server with esbuild
+        run: |
+          echo "Starting server bundle..."
+
+          npx esbuild server.js \
+            --bundle \
+            --platform=node \
+            --format=cjs \
+            --packages=external \
+            --sourcemap \
+            --outfile=dist/server.cjs
+
+          echo ""
+          echo "Server build completed."
+          ls -lah dist/server.cjs
 
       - name: Verify build artifacts
         run: |
-          if [ ! -f "dist/index.html" ] || [ ! -f "dist/server.cjs" ]; then
-            echo "::error::Build verification failed! dist/index.html or dist/server.cjs is missing."
+          echo "Verifying final build artifacts..."
+          echo ""
+
+          if [ ! -f "dist/index.html" ]; then
+            echo "::error::dist/index.html is missing."
             exit 1
           fi
-          echo "Build artifacts verified successfully:"
-          ls -la dist
+
+          if [ ! -f "dist/server.cjs" ]; then
+            echo "::error::dist/server.cjs is missing."
+            exit 1
+          fi
+
+          echo "All build artifacts verified successfully."
+          echo ""
+          echo "Final dist directory:"
+          ls -lah dist
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -78,6 +113,7 @@ jobs:
     name: Deploy to Render (CD)
     needs: build-and-test
     runs-on: ubuntu-latest
+
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
 
     steps:
@@ -86,23 +122,41 @@ jobs:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
           if [ -z "$RENDER_DEPLOY_HOOK" ]; then
-            echo "::warning::RENDER_DEPLOY_HOOK_URL secret is not configured in repository settings."
-            echo "CI build and validation passed successfully!"
-            echo "To enable automated deployment on push to main:"
-            echo "1. Go to your Render Dashboard -> Your Service (plutus-chat) -> Settings"
-            echo "2. Copy the 'Deploy Hook' URL"
-            echo "3. In GitHub repo Settings -> Secrets and variables -> Actions, add a secret named RENDER_DEPLOY_HOOK_URL"
-          else
-            echo "Triggering Render deployment..."
-            RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
-            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-            BODY=$(echo "$RESPONSE" | sed '$d')
-
-            echo "Render API Response HTTP status: $HTTP_CODE"
-            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-              echo "Deployment successfully triggered on Render!"
-            else
-              echo "::error::Failed to trigger Render deployment. HTTP Code: $HTTP_CODE, Body: $BODY"
-              exit 1
-            fi
+            echo "::warning::RENDER_DEPLOY_HOOK_URL secret is not configured."
+            echo ""
+            echo "CI build and validation passed successfully."
+            echo "Automatic Render deployment was skipped."
+            echo ""
+            echo "To enable automatic deployment:"
+            echo "1. Open your Render dashboard."
+            echo "2. Open your plutus-chat service."
+            echo "3. Go to Settings."
+            echo "4. Find Deploy Hook."
+            echo "5. Copy the Deploy Hook URL."
+            echo "6. Open GitHub repository Settings."
+            echo "7. Go to Secrets and variables -> Actions."
+            echo "8. Add a repository secret named RENDER_DEPLOY_HOOK_URL."
+            exit 0
           fi
+
+          echo "Triggering Render deployment..."
+
+          RESPONSE=$(curl -sS \
+            -w "\n%{http_code}" \
+            -X POST \
+            "$RENDER_DEPLOY_HOOK")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "Render response HTTP status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "Render deployment successfully triggered."
+          else
+            echo "::error::Failed to trigger Render deployment."
+            echo "HTTP Code: $HTTP_CODE"
+            echo "Response: $BODY"
+            exit 1
+          fi
+```
