@@ -1,3 +1,4 @@
+```yaml
 name: CI/CD Pipeline
 
 on:
@@ -30,11 +31,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
-
-      - name: Install Linux native dependencies
-        run: |
-          npm install --save-dev lightningcss-linux-x64-gnu
+        run: npm ci --include=optional
 
       - name: Run linter
         run: npm run lint
@@ -130,16 +127,6 @@ jobs:
             echo ""
             echo "CI build and validation passed successfully."
             echo "Automatic Render deployment was skipped."
-            echo ""
-            echo "To enable automatic deployment:"
-            echo "1. Open your Render dashboard."
-            echo "2. Open your plutus-chat service."
-            echo "3. Go to Settings."
-            echo "4. Find Deploy Hook."
-            echo "5. Copy the Deploy Hook URL."
-            echo "6. Open GitHub repository Settings."
-            echo "7. Go to Secrets and variables -> Actions."
-            echo "8. Add a repository secret named RENDER_DEPLOY_HOOK_URL"
             exit 0
           fi
 
@@ -163,3 +150,4 @@ jobs:
             echo "Response: $BODY"
             exit 1
           fi
+```
