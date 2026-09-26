@@ -1,4 +1,4 @@
-```yaml
+
 name: CI/CD Pipeline
 
 on:
@@ -159,4 +159,4 @@ jobs:
             echo "Response: $BODY"
             exit 1
           fi
-```
+
