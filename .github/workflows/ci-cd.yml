@@ -1,6 +1,4 @@
-
 name: CI/CD Pipeline
-
 
 on:
   push:
@@ -34,6 +32,17 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=optional
 
+      - name: Install Lightning CSS Linux binary
+        run: npm install --no-save --force lightningcss@latest
+
+      - name: Verify Lightning CSS
+        run: |
+          node -e "require('lightningcss'); console.log('Lightning CSS loaded successfully')"
+
+      - name: Verify Tailwind CSS Oxide
+        run: |
+          node -e "require('@tailwindcss/oxide'); console.log('Tailwind Oxide loaded successfully')"
+
       - name: Run linter
         run: npm run lint
 
@@ -58,15 +67,11 @@ jobs:
       - name: Verify frontend build
         run: |
           if [ ! -f "dist/index.html" ]; then
-            echo "::error::Vite build completed but dist/index.html was not found."
-            echo ""
-            echo "Searching for index.html:"
-            find . -maxdepth 4 -type f -name "index.html" -print
+            echo "::error::Vite build did not generate dist/index.html"
             exit 1
           fi
 
           echo "Frontend build verified successfully."
-          ls -lah dist/index.html
 
       - name: Build server with esbuild
         run: |
@@ -82,12 +87,10 @@ jobs:
 
           echo ""
           echo "Server build completed."
-          ls -lah dist/server.cjs
 
       - name: Verify build artifacts
         run: |
           echo "Verifying final build artifacts..."
-          echo ""
 
           if [ ! -f "dist/index.html" ]; then
             echo "::error::dist/index.html is missing."
@@ -99,9 +102,8 @@ jobs:
             exit 1
           fi
 
-          echo "All build artifacts verified successfully."
           echo ""
-          echo "Final dist directory:"
+          echo "Build artifacts verified successfully."
           ls -lah dist
 
       - name: Upload build artifact
@@ -125,9 +127,7 @@ jobs:
         run: |
           if [ -z "$RENDER_DEPLOY_HOOK" ]; then
             echo "::warning::RENDER_DEPLOY_HOOK_URL secret is not configured."
-            echo ""
-            echo "CI build and validation passed successfully."
-            echo "Automatic Render deployment was skipped."
+            echo "CI passed, but Render deployment was skipped."
             exit 0
           fi
 
@@ -151,4 +151,5 @@ jobs:
             echo "Response: $BODY"
             exit 1
           fi
+
 
