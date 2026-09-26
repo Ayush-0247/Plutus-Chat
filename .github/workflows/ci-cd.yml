@@ -1,3 +1,4 @@
+
 name: CI/CD Pipeline
 
 on:
@@ -23,7 +24,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22.x
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -32,16 +33,19 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=optional
 
-      - name: Install Lightning CSS Linux binary
-        run: npm install --no-save --force lightningcss@latest
-
-      - name: Verify Lightning CSS
+      - name: Install Linux native packages
         run: |
-          node -e "require('lightningcss'); console.log('Lightning CSS loaded successfully')"
+          npm install --no-save --force \
+            @tailwindcss/oxide-linux-x64-gnu \
+            lightningcss-linux-x64-gnu
 
-      - name: Verify Tailwind CSS Oxide
+      - name: Verify native dependencies
         run: |
+          echo "Checking Tailwind Oxide..."
           node -e "require('@tailwindcss/oxide'); console.log('Tailwind Oxide loaded successfully')"
+
+          echo "Checking Lightning CSS..."
+          node -e "require('lightningcss'); console.log('Lightning CSS loaded successfully')"
 
       - name: Run linter
         run: npm run lint
@@ -49,12 +53,12 @@ jobs:
       - name: Security audit check
         run: npm audit --audit-level=high
 
-      - name: Clean previous build
+      - name: Clean build directory
         run: |
           rm -rf dist
           mkdir -p dist
 
-      - name: Build frontend with Vite
+      - name: Build frontend
         run: |
           echo "Starting frontend build..."
           npx vite build
@@ -67,13 +71,16 @@ jobs:
       - name: Verify frontend build
         run: |
           if [ ! -f "dist/index.html" ]; then
-            echo "::error::Vite build did not generate dist/index.html"
+            echo "::error::dist/index.html was not generated."
+            echo ""
+            echo "Searching for index.html:"
+            find . -maxdepth 4 -type f -name "index.html" -print
             exit 1
           fi
 
           echo "Frontend build verified successfully."
 
-      - name: Build server with esbuild
+      - name: Build server
         run: |
           echo "Starting server bundle..."
 
@@ -90,7 +97,7 @@ jobs:
 
       - name: Verify build artifacts
         run: |
-          echo "Verifying final build artifacts..."
+          echo "Verifying build artifacts..."
 
           if [ ! -f "dist/index.html" ]; then
             echo "::error::dist/index.html is missing."
@@ -104,6 +111,7 @@ jobs:
 
           echo ""
           echo "Build artifacts verified successfully."
+          echo ""
           ls -lah dist
 
       - name: Upload build artifact
@@ -127,7 +135,9 @@ jobs:
         run: |
           if [ -z "$RENDER_DEPLOY_HOOK" ]; then
             echo "::warning::RENDER_DEPLOY_HOOK_URL secret is not configured."
-            echo "CI passed, but Render deployment was skipped."
+            echo ""
+            echo "CI passed successfully."
+            echo "Render deployment was skipped."
             exit 0
           fi
 
@@ -151,5 +161,3 @@ jobs:
             echo "Response: $BODY"
             exit 1
           fi
-
-
